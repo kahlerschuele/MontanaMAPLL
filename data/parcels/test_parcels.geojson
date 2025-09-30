@@ -1,0 +1,245 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.044,
+              45.679
+            ],
+            [
+              -111.043,
+              45.679
+            ],
+            [
+              -111.043,
+              45.678
+            ],
+            [
+              -111.044,
+              45.678
+            ],
+            [
+              -111.044,
+              45.679
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12345",
+        "OWNERNAME": "SMITH, JOHN & JANE",
+        "MAILADD": "123 MAIN ST",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.25,
+        "TAXVALUE": 425000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.043,
+              45.679
+            ],
+            [
+              -111.042,
+              45.679
+            ],
+            [
+              -111.042,
+              45.678
+            ],
+            [
+              -111.043,
+              45.678
+            ],
+            [
+              -111.043,
+              45.679
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12346",
+        "OWNERNAME": "DOE FAMILY TRUST",
+        "MAILADD": "125 MAIN ST",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.23,
+        "TAXVALUE": 398000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.042,
+              45.679
+            ],
+            [
+              -111.041,
+              45.679
+            ],
+            [
+              -111.041,
+              45.678
+            ],
+            [
+              -111.042,
+              45.678
+            ],
+            [
+              -111.042,
+              45.679
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12347",
+        "OWNERNAME": "JOHNSON, MICHAEL R",
+        "MAILADD": "127 MAIN ST",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.28,
+        "TAXVALUE": 445000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.044,
+              45.678
+            ],
+            [
+              -111.043,
+              45.678
+            ],
+            [
+              -111.043,
+              45.677
+            ],
+            [
+              -111.044,
+              45.677
+            ],
+            [
+              -111.044,
+              45.678
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12348",
+        "OWNERNAME": "BROWN PROPERTIES LLC",
+        "MAILADD": "PO BOX 456",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.26,
+        "TAXVALUE": 412000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.043,
+              45.678
+            ],
+            [
+              -111.042,
+              45.678
+            ],
+            [
+              -111.042,
+              45.677
+            ],
+            [
+              -111.043,
+              45.677
+            ],
+            [
+              -111.043,
+              45.678
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12349",
+        "OWNERNAME": "WILSON, SARAH J",
+        "MAILADD": "124 ELM ST",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.24,
+        "TAXVALUE": 389000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -111.042,
+              45.678
+            ],
+            [
+              -111.041,
+              45.678
+            ],
+            [
+              -111.041,
+              45.677
+            ],
+            [
+              -111.042,
+              45.677
+            ],
+            [
+              -111.042,
+              45.678
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "PARCELID": "R12350",
+        "OWNERNAME": "MARTINEZ FAMILY TRUST",
+        "MAILADD": "126 ELM ST",
+        "MAILCITY": "BOZEMAN",
+        "MAILSTATE": "MT",
+        "MAILZIP": "59715",
+        "ACRES": 0.27,
+        "TAXVALUE": 435000
+      }
+    }
+  ]
+}

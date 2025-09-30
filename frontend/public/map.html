@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Montana Property Map - Real Data</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js'></script>
+    <link href='https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css' rel='stylesheet' />
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+        .legend {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+            padding: 16px;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+            max-width: 220px;
+        }
+
+        .legend h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 2px;
+            background: white;
+            border: 1px solid black;
+            margin-right: 8px;
+        }
+
+        .info-box {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 14px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            font-size: 11px;
+            z-index: 1;
+            max-width: 400px;
+        }
+
+        .maplibregl-popup-content {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 12px;
+        }
+
+        .popup-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .popup-info {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="loading" class="loading">Loading Montana parcels...</div>
+
+<div class="legend">
+    <h4>Montana Property Lines</h4>
+    <div class="legend-item">
+        <div class="legend-color"></div>
+        <span>Private Property</span>
+    </div>
+    <div style="font-size: 10px; color: #666; margin-top: 8px;">
+        Real Montana Cadastral data<br>
+        Zoom in to see lot lines<br>
+        Pan around to load more parcels
+    </div>
+</div>
+
+<div class="info-box">
+    Showing all Montana property boundaries from official state cadastral database.
+    Data updates monthly. Source: Montana State Library MSDI Framework
+</div>
+
+<script>
+console.log('Montana Property Map - Real Data from MT State Library');
+
+// Initialize map
+const map = new maplibregl.Map({
+    container: 'map',
+    style: {
+        version: 8,
+        sources: {
+            'esri-satellite': {
+                type: 'raster',
+                tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                tileSize: 256,
+                attribution: '© Esri'
+            }
+        },
+        layers: [
+            {
+                id: 'background',
+                type: 'background',
+                paint: { 'background-color': '#1a1a1a' }
+            },
+            {
+                id: 'satellite',
+                type: 'raster',
+                source: 'esri-satellite',
+                paint: { 'raster-opacity': 1 }
+            }
+        ]
+    },
+    center: [-111.043, 45.678], // Bozeman, MT
+    zoom: 15,
+    minZoom: 3,
+    maxZoom: 20
+});
+
+// Add navigation controls
+map.addControl(new maplibregl.NavigationControl(), 'top-left');
+map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
+
+let parcelData = { type: 'FeatureCollection', features: [] };
+
+// Function to fetch parcels for current view
+async function loadParcelsInView() {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+
+    // Only load parcels when zoomed in enough
+    if (zoom < 13) {
+        console.log('Zoom in to see parcels (current zoom:', zoom, ')');
+        return;
+    }
+
+    // Build bbox for ArcGIS envelope: xmin,ymin,xmax,ymax
+    const envelope = {
+        xmin: bounds.getWest(),
+        ymin: bounds.getSouth(),
+        xmax: bounds.getEast(),
+        ymax: bounds.getNorth(),
+        spatialReference: { wkid: 4326 }
+    };
+
+    const url = `https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Parcels/MapServer/0/query?` +
+        `where=1%3D1&` +
+        `geometry=${encodeURIComponent(JSON.stringify(envelope))}&` +
+        `geometryType=esriGeometryEnvelope&` +
+        `spatialRel=esriSpatialRelIntersects&` +
+        `outFields=*&` +  // Get ALL fields
+        `returnGeometry=true&` +
+        `outSR=4326&` +
+        `f=geojson&` +
+        `resultRecordCount=2000`;
+
+    console.log('Fetching parcels in view...');
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.error('API error:', response.status);
+            return;
+        }
+
+        const data = await response.json();
+        console.log(`✓ Loaded ${data.features.length} parcels`);
+
+        if (data.features.length > 0) {
+            parcelData = data;
+
+            // Update or add source
+            if (map.getSource('mt-parcels')) {
+                map.getSource('mt-parcels').setData(parcelData);
+            } else {
+                map.addSource('mt-parcels', {
+                    type: 'geojson',
+                    data: parcelData
+                });
+
+                // Add parcel layers
+                map.addLayer({
+                    id: 'parcels-casing',
+                    type: 'line',
+                    source: 'mt-parcels',
+                    paint: {
+                        'line-color': '#000',
+                        'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.8, 18, 4.5],
+                        'line-opacity': 0.65
+                    }
+                });
+
+                map.addLayer({
+                    id: 'parcels-line',
+                    type: 'line',
+                    source: 'mt-parcels',
+                    paint: {
+                        'line-color': '#fff',
+                        'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 18, 3],
+                        'line-opacity': 1
+                    }
+                });
+
+                // Click handler with detailed property info
+                map.on('click', 'parcels-line', (e) => {
+                    if (!e.features || !e.features[0]) return;
+                    const p = e.features[0].properties;
+
+                    // Format owner address
+                    let ownerAddr = '';
+                    if (p.OwnerAddress1) ownerAddr += p.OwnerAddress1;
+                    if (p.OwnerAddress2) ownerAddr += (ownerAddr ? ', ' : '') + p.OwnerAddress2;
+                    if (p.OwnerCity || p.OwnerState || p.OwnerZipCode) {
+                        ownerAddr += '<br>' + [p.OwnerCity, p.OwnerState, p.OwnerZipCode].filter(Boolean).join(', ');
+                    }
+
+                    // Property address
+                    let propAddr = '';
+                    if (p.AddressLine1) propAddr += p.AddressLine1;
+                    if (p.AddressLine2) propAddr += (propAddr ? ', ' : '') + p.AddressLine2;
+                    if (p.CityStateZip) propAddr += '<br>' + p.CityStateZip;
+
+                    // Legal description
+                    let legal = '';
+                    if (p.LegalDescriptionShort) {
+                        legal = p.LegalDescriptionShort;
+                    } else {
+                        const parts = [];
+                        if (p.Township) parts.push(`T${p.Township}`);
+                        if (p.Range) parts.push(`R${p.Range}`);
+                        if (p.Section) parts.push(`S${p.Section}`);
+                        legal = parts.join(' ');
+                    }
+                    if (p.Subdivision) legal += (legal ? '<br>' : '') + p.Subdivision;
+                    if (p.CertificateOfSurvey) legal += (legal ? '<br>' : '') + 'COS: ' + p.CertificateOfSurvey;
+
+                    // Build detailed popup
+                    const html = `
+                        <div style="font-family: -apple-system, sans-serif; min-width: 280px; max-width: 400px;">
+                            <div style="font-weight: 700; font-size: 15px; margin-bottom: 12px; color: #1a1a1a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
+                                Parcel ${p.PARCELID || 'N/A'}
+                            </div>
+
+                            ${p.OwnerName ? `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Owner</div>
+                                <div style="font-size: 13px; color: #1a1a1a; font-weight: 600;">${p.OwnerName}</div>
+                                ${ownerAddr ? `<div style="font-size: 12px; color: #555; margin-top: 2px;">${ownerAddr}</div>` : ''}
+                            </div>` : ''}
+
+                            ${propAddr ? `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Address</div>
+                                <div style="font-size: 12px; color: #1a1a1a;">${propAddr}</div>
+                            </div>` : ''}
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                                ${p.GISAcres ? `
+                                <div>
+                                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Total Acres</div>
+                                    <div style="font-size: 14px; color: #1a1a1a; font-weight: 600;">${parseFloat(p.GISAcres).toFixed(2)}</div>
+                                </div>` : ''}
+                                ${p.PropType ? `
+                                <div>
+                                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Property Type</div>
+                                    <div style="font-size: 12px; color: #1a1a1a;">${p.PropType}</div>
+                                </div>` : ''}
+                            </div>
+
+                            ${(p.TotalValue || p.TotalLandValue || p.TotalBuildingValue) ? `
+                            <div style="margin-bottom: 12px; background: #f3f4f6; padding: 10px; border-radius: 6px;">
+                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Assessment Values (${p.TaxYear || 'N/A'})</div>
+                                ${p.TotalValue ? `<div style="font-size: 13px; color: #1a1a1a;"><strong>Total:</strong> $${parseInt(p.TotalValue).toLocaleString()}</div>` : ''}
+                                ${p.TotalLandValue ? `<div style="font-size: 12px; color: #555;">Land: $${parseInt(p.TotalLandValue).toLocaleString()}</div>` : ''}
+                                ${p.TotalBuildingValue ? `<div style="font-size: 12px; color: #555;">Building: $${parseInt(p.TotalBuildingValue).toLocaleString()}</div>` : ''}
+                            </div>` : ''}
+
+                            ${legal ? `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Legal Description</div>
+                                <div style="font-size: 11px; color: #1a1a1a; line-height: 1.4;">${legal}</div>
+                            </div>` : ''}
+
+                            ${(p.IrrigatedAcres || p.GrazingAcres || p.ForestAcres) ? `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Land Use Breakdown</div>
+                                <div style="font-size: 11px; color: #555; line-height: 1.6;">
+                                    ${p.IrrigatedAcres ? `Irrigated: ${parseFloat(p.IrrigatedAcres).toFixed(1)} ac<br>` : ''}
+                                    ${p.GrazingAcres ? `Grazing: ${parseFloat(p.GrazingAcres).toFixed(1)} ac<br>` : ''}
+                                    ${p.ForestAcres ? `Forest: ${parseFloat(p.ForestAcres).toFixed(1)} ac<br>` : ''}
+                                    ${p.ContinuousCropAcres ? `Crop: ${parseFloat(p.ContinuousCropAcres).toFixed(1)} ac<br>` : ''}
+                                    ${p.WildHayAcres ? `Wild Hay: ${parseFloat(p.WildHayAcres).toFixed(1)} ac<br>` : ''}
+                                </div>
+                            </div>` : ''}
+
+                            <div style="font-size: 10px; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+                                ${p.CountyName ? `${p.CountyName} County, Montana • ` : ''}Source: MT Cadastral MSDI
+                            </div>
+                        </div>
+                    `;
+
+                    new maplibregl.Popup({ maxWidth: '420px' })
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                });
+
+                // Hover cursor
+                map.on('mouseenter', 'parcels-line', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', 'parcels-line', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            }
+
+            document.getElementById('loading').style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading parcels:', error);
+    }
+}
+
+// Load parcels when map is ready
+map.on('load', () => {
+    console.log('Map loaded - Esri World Imagery');
+    loadParcelsInView();
+});
+
+// Reload parcels when user finishes moving the map
+map.on('moveend', () => {
+    if (map.getZoom() >= 13) {
+        loadParcelsInView();
+    }
+});
+
+// Show message when zoomed out
+map.on('zoom', () => {
+    const zoom = map.getZoom();
+    const loadingEl = document.getElementById('loading');
+    if (zoom < 13) {
+        loadingEl.textContent = 'Zoom in to see property lines';
+        loadingEl.style.display = 'block';
+    } else if (loadingEl.textContent !== 'Loading Montana parcels...') {
+        loadingEl.style.display = 'none';
+    }
+});
+
+map.on('error', (e) => {
+    console.error('Map error:', e);
+});
+
+</script>
+
+</body>
+</html>

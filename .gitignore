@@ -1,0 +1,32 @@
+# Data files
+data/padus/*.zip
+data/padus/*.gdb/
+data/padus/*.gpkg
+data/padus/*.geojson
+data/padus/*.ndjson
+data/tiles/*.mbtiles
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.DS_Store
+
+# Environment
+.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

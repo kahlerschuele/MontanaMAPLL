@@ -1,0 +1,129 @@
+{
+  "version": 8,
+  "name": "US Ownership",
+  "sprite": "",
+  "glyphs": "",
+  "sources": {
+    "usgs": {
+      "type": "raster",
+      "tiles": [
+        "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
+      ],
+      "tileSize": 256,
+      "attribution": "© USGS"
+    },
+    "ownership": {
+      "type": "vector",
+      "tiles": ["http://localhost:8000/tiles/ownership/{z}/{x}/{y}.pbf"],
+      "minzoom": 4,
+      "maxzoom": 14
+    }
+  },
+  "layers": [
+    {
+      "id": "bg",
+      "type": "background",
+      "paint": {
+        "background-color": "#000"
+      }
+    },
+    {
+      "id": "imagery",
+      "type": "raster",
+      "source": "usgs",
+      "paint": {
+        "raster-opacity": 1
+      }
+    },
+    {
+      "id": "padus-low-outline",
+      "type": "line",
+      "source": "ownership",
+      "source-layer": "padus_low",
+      "minzoom": 4,
+      "maxzoom": 10,
+      "paint": {
+        "line-color": [
+          "match",
+          ["get", "owner_class"],
+          "federal", "#1d4ed8",
+          "state", "#059669",
+          "local", "#7c3aed",
+          "tribal", "#b45309",
+          "other_public", "#0ea5e9",
+          "#94a3b8"
+        ],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4, 0.4,
+          7, 0.8,
+          9, 1.2
+        ],
+        "line-opacity": 0.9
+      }
+    },
+    {
+      "id": "padus-hi-fill",
+      "type": "fill",
+      "source": "ownership",
+      "source-layer": "padus_hi",
+      "minzoom": 10,
+      "paint": {
+        "fill-color": [
+          "match",
+          ["get", "owner_class"],
+          "federal", "#1d4ed8",
+          "state", "#059669",
+          "local", "#7c3aed",
+          "tribal", "#b45309",
+          "other_public", "#0ea5e9",
+          "#94a3b8"
+        ],
+        "fill-opacity": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10, 0.06,
+          13, 0.10
+        ]
+      }
+    },
+    {
+      "id": "padus-hi-outline",
+      "type": "line",
+      "source": "ownership",
+      "source-layer": "padus_hi",
+      "minzoom": 10,
+      "paint": {
+        "line-color": [
+          "match",
+          ["get", "owner_class"],
+          "federal", "#1d4ed8",
+          "state", "#059669",
+          "local", "#7c3aed",
+          "tribal", "#b45309",
+          "other_public", "#0ea5e9",
+          "#94a3b8"
+        ],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10, 1.4,
+          12, 2.0,
+          14, 2.6
+        ],
+        "line-dasharray": [
+          "step",
+          ["zoom"],
+          ["literal", [1, 0]],
+          12,
+          ["literal", [3, 2]]
+        ],
+        "line-opacity": 0.9
+      }
+    }
+  ]
+}
