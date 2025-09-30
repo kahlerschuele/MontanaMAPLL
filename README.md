@@ -1,230 +1,164 @@
-# US Ownership Map
+# MontanaMAPLL
 
-A fast, accurate web map showing US public land ownership (federal, state, local, tribal) on satellite imagery.
+Interactive map showing Montana property boundaries with detailed parcel information on high-quality satellite imagery.
 
 ## Features
 
-- **Satellite basemap**: USGS National Map imagery
-- **Public land boundaries**: PAD-US (Protected Areas Database)
-- **Two-tier vector tiles**: Fast at low zoom, detailed at high zoom
-- **Interactive**: Click parcels for ownership details
-- **No paid services**: 100% open data and free tile endpoints
+- **Real Montana cadastral data**: Official parcel boundaries from Montana State Library MSDI Framework
+- **High-quality satellite basemap**: Esri World Imagery (no API key required)
+- **Detailed property information**: Owner name, acreage, assessed values, legal description, land use breakdown
+- **Interactive parcels**: Click any property to see full details
+- **Dynamic loading**: Fetches parcels on-demand as you pan around Montana
+- **White property lines**: Clean onX-style visualization with black casing
+- **100% free data**: No paid services or API keys required
+
+## Quick Start
+
+### Option 1: Standalone HTML (Easiest)
+
+Open `frontend/public/map.html` in any modern web browser - no setup required!
+
+Or serve it locally:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open `http://localhost:5174/map.html`
+
+### Option 2: Full Development Setup
+
+**1. Backend (FastAPI)**
+```bash
+cd backend
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8001
+```
+
+**2. Frontend (React + Vite)**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs at `http://localhost:5174`
 
 ## Project Structure
 
 ```
-us-ownership/
-├── server/          # FastAPI tile server
-├── etl/             # Data processing scripts
-├── web/             # React + MapLibre frontend
-└── data/            # PAD-US data and MBTiles output
+montana-map/
+├── frontend/
+│   ├── public/
+│   │   ├── map.html                    # Standalone working map (use this!)
+│   │   └── montana_parcels_WORKING.html # Backup version
+│   ├── src/                            # React components
+│   └── package.json
+├── backend/
+│   ├── main.py                         # FastAPI server
+│   └── requirements.txt
+├── data/
+│   └── parcels/                        # Sample parcel data
+└── scripts/                            # Data fetching scripts
 ```
 
-## Prerequisites
+## How It Works
 
-**System dependencies:**
-- Python 3.11+
-- Node.js 18+
-- GDAL 3.4+ (ogr2ogr)
-- tippecanoe 2.42+
+The map uses the **Montana State Library MSDI Parcels** service to fetch real parcel data:
 
-**Install tippecanoe:**
-```bash
-# macOS
-brew install tippecanoe
+- **Data source**: `https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Parcels/MapServer`
+- **Update frequency**: Monthly from Montana Department of Revenue
+- **Coverage**: All 56 Montana counties
+- **Parcel limit**: 2,000 parcels per view (dynamically loaded)
 
-# Ubuntu/Debian
-sudo apt-get install tippecanoe
+When you zoom to level 13+, the map queries the API for parcels in your current view and displays:
+- Parcel ID
+- Owner name and mailing address
+- Property address
+- Total acres and property type
+- Assessment values (total, land, building)
+- Tax year
+- Legal description (Township/Range/Section)
+- Land use breakdown (irrigated, grazing, forest, crop acres)
+- County name
 
-# Or build from source: https://github.com/felt/tippecanoe
-```
+## Data Fields
 
-**Install GDAL:**
-```bash
-# macOS
-brew install gdal
+All parcel data comes from Montana's cadastral database. Click any parcel to see:
 
-# Ubuntu/Debian
-sudo apt-get install gdal-bin python3-gdal
+| Field | Description |
+|-------|-------------|
+| PARCELID | Unique parcel identifier |
+| OwnerName | Property owner name |
+| OwnerAddress | Owner mailing address (street, city, state, zip) |
+| AddressLine1/2 | Property situs address |
+| GISAcres | Total parcel acreage |
+| PropType | Property type/classification |
+| TotalValue | Total assessed value |
+| TotalLandValue | Land-only assessed value |
+| TotalBuildingValue | Improvement/building value |
+| TaxYear | Assessment year |
+| Township/Range/Section | Legal description (PLSS) |
+| LegalDescriptionShort | Short legal description |
+| Subdivision | Subdivision name (if applicable) |
+| IrrigatedAcres | Irrigated land acreage |
+| GrazingAcres | Grazing land acreage |
+| ForestAcres | Forest land acreage |
+| ContinuousCropAcres | Cropland acreage |
+| CountyName | Montana county |
 
-# Windows
-# Use OSGeo4W: https://trac.osgeo.org/osgeo4w/
-```
+## Tech Stack
 
-## Setup
+**Frontend:**
+- MapLibre GL JS 3.6.2 (vector map rendering)
+- Vanilla JavaScript (standalone map)
+- React 18 + TypeScript (development version)
+- Vite (build tool)
 
-### 1. Install Python dependencies
+**Backend:**
+- FastAPI (Python)
+- CORS-enabled for local development
 
-```bash
-cd server
-pip install -r requirements.txt
-```
-
-### 2. Install Node dependencies
-
-```bash
-cd web
-npm install
-```
-
-## Build Data Pipeline
-
-### Step 1: Download PAD-US
-
-```bash
-bash etl/padus_download.sh
-```
-
-Downloads ~5GB PAD-US dataset to `data/padus/`
-
-### Step 2: Prepare data
-
-```bash
-python etl/padus_prepare.py
-```
-
-Normalizes PAD-US attributes and outputs:
-- `data/padus/padus_clean.ndjson` (all features)
-- `data/padus/padus_dissolved.geojson` (dissolved by owner_class)
-
-### Step 3: Build vector tiles
-
-```bash
-bash etl/build_tiles.sh
-```
-
-Generates `data/tiles/ownership.mbtiles` (~800MB) with:
-- **padus_low** layer (z4-z9): Dissolved boundaries
-- **padus_hi** layer (z10-z14): Original features
-
-**Build time:** ~10-30 minutes depending on hardware
-
-## Run Application
-
-### Start tile server
-
-```bash
-cd server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Server runs at `http://localhost:8000`
-
-**Endpoints:**
-- `GET /health` - Health check
-- `GET /tiles/ownership/{z}/{x}/{y}.pbf` - Vector tiles
-
-### Start web app
-
-```bash
-cd web
-npm run dev
-```
-
-App runs at `http://localhost:5173`
+**Data:**
+- Montana State Library MSDI Framework (live API)
+- Esri World Imagery (satellite basemap)
 
 ## Performance
 
-- **Tile sizes**: <75KB at z≤8, <200KB at z≤10
-- **Load time**: <2s on national view (typical laptop)
-- **Zoom range**: z3-z16
-- **Caching**: Immutable tiles cached for 1 year
+- Parcels only load when zoomed to level 13+
+- Maximum 2,000 parcels per viewport
+- Data fetched on-demand (no large downloads)
+- Works across all of Montana
 
-## Data Sources
+## Future Enhancements
 
-| Layer | Source | License |
-|-------|--------|---------|
-| Satellite imagery | USGS National Map | Public Domain |
-| Public land boundaries | PAD-US 3.0 | Public Domain |
-
-**PAD-US date:** September 2023 (update `ASOF_DATE` in `etl/padus_prepare.py`)
-
-## Color Legend
-
-- **Federal** (blue): BLM, USFS, NPS, FWS, DOD, etc.
-- **State** (green): State parks, forests, wildlife areas
-- **Local** (purple): County, city, regional parks
-- **Tribal** (orange): Tribal lands
-- **Other Public** (cyan): NGO, joint management
-
-## Architecture
-
-### ETL Pipeline
-
-1. **Download**: PAD-US GeoPackage from ScienceBase
-2. **Normalize**: Extract 5 fields (owner_class, owner_name, unit_name, source, asof)
-3. **Dissolve**: Union by owner_class for low zooms
-4. **Tile**: tippecanoe with two-tier zoom strategy
-
-### Tile Server
-
-- **FastAPI** serves MBTiles via SQLite read-only connection
-- **Y-flip**: Converts XYZ → TMS for MBTiles compatibility
-- **Headers**: Gzip + immutable caching
-
-### Frontend
-
-- **MapLibre GL JS 3.x**: Vector + raster rendering
-- **React 18**: UI components
-- **Two layers**:
-  - `padus_low` (z4-z9): Solid outlines, no fill
-  - `padus_hi` (z10-z14): Dashed outlines + transparent fill
-
-## Scaling & Optimization
-
-**To reduce tile size:**
-- Increase `--simplification` in tippecanoe
-- Add `--drop-smallest-as-needed`
-- Reduce max zoom to z12
-
-**To add more data:**
-- Add new source to `style.json`
-- Create separate MBTiles for each dataset
-- Mount new tile endpoint in FastAPI
-
-## Future Enhancements (Out of Scope)
-
-- Private parcel boundaries (requires commercial data)
-- Property owner search
-- Wells, pipelines, trails
-- 3D terrain
-- Mobile apps
-
-## Troubleshooting
-
-**"MBTiles file not found"**
-- Run `bash etl/build_tiles.sh` first
-- Check `data/tiles/ownership.mbtiles` exists
-
-**"tippecanoe: command not found"**
-- Install tippecanoe (see Prerequisites)
-
-**Tiles not loading in browser**
-- Verify server running: `curl http://localhost:8000/health`
-- Check CORS in browser console
-- Confirm tile path in `web/src/map/style.json`
-
-**Slow performance**
-- Reduce max zoom in `build_tiles.sh`
-- Increase simplification tolerance
-- Check tile sizes: `sqlite3 data/tiles/ownership.mbtiles "SELECT zoom_level, COUNT(*), AVG(LENGTH(tile_data)) FROM tiles GROUP BY zoom_level"`
+- Historical tax data
+- Property sales history
+- Zoning information
+- Public land overlay (PAD-US)
+- Search by owner name or parcel ID
+- Export parcel data to CSV/GeoJSON
+- Mobile optimization
 
 ## License
 
-MIT License - See LICENSE file
+MIT License
 
 **Data licenses:**
-- USGS Imagery: Public Domain
-- PAD-US: Public Domain (CC0)
+- Montana Cadastral Data: Public Domain (Montana State Library)
+- Esri World Imagery: Free for non-commercial use
 
 ## Credits
 
 Built using:
 - [MapLibre GL JS](https://maplibre.org/)
-- [tippecanoe](https://github.com/felt/tippecanoe)
+- [Montana State Library MSDI Framework](https://msl.mt.gov/geoinfo/msdi/)
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [React](https://react.dev/)
 
 Data from:
-- [USGS National Map](https://www.usgs.gov/programs/national-geospatial-program/national-map)
-- [PAD-US](https://www.usgs.gov/programs/gap-analysis-project/science/pad-us-data-overview)
+- [Montana State Library - Cadastral](https://msl.mt.gov/geoinfo/msdi/cadastral/)
+- [Esri World Imagery](https://www.esri.com/en-us/arcgis/products/data/data-portfolio/world-imagery)
+
+🤖 Built with [Claude Code](https://claude.com/claude-code)
