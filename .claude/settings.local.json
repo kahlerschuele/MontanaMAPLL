@@ -27,7 +27,12 @@
       "Bash(git remote add:*)",
       "Bash(git branch:*)",
       "Bash(git push:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "WebFetch(domain:gis.dnrc.mt.gov)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:mtdnrc.hub.arcgis.com)",
+      "WebFetch(domain:opendata-mtdnrc.hub.arcgis.com)",
+      "WebFetch(domain:svc.mt.gov)"
     ],
     "deny": [],
     "ask": []

@@ -92,15 +92,25 @@
 <div id="loading" class="loading">Loading Montana parcels...</div>
 
 <div class="legend">
-    <h4>Montana Property Lines</h4>
+    <h4>Montana Map Layers</h4>
     <div class="legend-item">
         <div class="legend-color"></div>
-        <span>Private Property</span>
+        <span>Property Lines</span>
+    </div>
+    <div class="legend-item">
+        <div style="width: 20px; height: 2px; background: #1e90ff; margin-right: 8px;"></div>
+        <span>Rivers & Streams</span>
+    </div>
+    <div class="legend-item">
+        <div style="width: 16px; height: 16px; background: rgba(30, 144, 255, 0.3); border: 1px solid #1e90ff; margin-right: 8px; border-radius: 2px;"></div>
+        <span>Lakes & Ponds</span>
     </div>
     <div style="font-size: 10px; color: #666; margin-top: 8px;">
-        Real Montana Cadastral data<br>
-        Zoom in to see lot lines<br>
-        Pan around to load more parcels
+        • Montana Cadastral parcels<br>
+        • OpenStreetMap street names<br>
+        • NHD waterways<br>
+        • DNRC water rights on parcels<br>
+        • Double-click properties for details
     </div>
 </div>
 
@@ -123,6 +133,12 @@ const map = new maplibregl.Map({
                 tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
                 tileSize: 256,
                 attribution: '© Esri'
+            },
+            'carto-labels': {
+                type: 'raster',
+                tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png'],
+                tileSize: 256,
+                attribution: '© CARTO © OpenStreetMap'
             }
         },
         layers: [
@@ -136,13 +152,20 @@ const map = new maplibregl.Map({
                 type: 'raster',
                 source: 'esri-satellite',
                 paint: { 'raster-opacity': 1 }
+            },
+            {
+                id: 'street-labels',
+                type: 'raster',
+                source: 'carto-labels',
+                paint: { 'raster-opacity': 0.8 }
             }
         ]
     },
     center: [-111.043, 45.678], // Bozeman, MT
     zoom: 15,
     minZoom: 3,
-    maxZoom: 20
+    maxZoom: 20,
+    doubleClickZoom: false  // Disable default double-click zoom
 });
 
 // Add navigation controls
@@ -150,6 +173,224 @@ map.addControl(new maplibregl.NavigationControl(), 'top-left');
 map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
 let parcelData = { type: 'FeatureCollection', features: [] };
+
+// Function to query water rights for a parcel
+async function getWaterRightsForParcel(parcelGeometry) {
+    try {
+        // Convert GeoJSON geometry to ArcGIS format
+        let arcgisGeometry;
+        if (parcelGeometry.type === 'Polygon') {
+            arcgisGeometry = { rings: parcelGeometry.coordinates };
+        } else if (parcelGeometry.type === 'MultiPolygon') {
+            arcgisGeometry = { rings: parcelGeometry.coordinates.flat(1) };
+        } else {
+            console.warn('Unsupported geometry type:', parcelGeometry.type);
+            return [];
+        }
+
+        const geomParam = encodeURIComponent(JSON.stringify(arcgisGeometry));
+
+        // Query both Points of Diversion (Layer 1) and Places of Use (Layer 2)
+        const podUrl = `https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WRQS/FeatureServer/1/query?` +
+            `where=1%3D1&` +
+            `geometry=${geomParam}&` +
+            `geometryType=esriGeometryPolygon&` +
+            `inSR=4326&` +
+            `spatialRel=esriSpatialRelIntersects&` +
+            `outFields=WR_NUMBER,OWNERS,SOURCE_NAME,PURPOSES,ENF_PRTY_DT_CHAR,MAX_FLOW_CFS,MAX_ACRES,WR_STATUS,WR_TYPE&` +
+            `returnGeometry=false&` +
+            `f=json&` +
+            `resultRecordCount=100`;
+
+        const pouUrl = `https://gis.dnrc.mt.gov/arcgis/rest/services/WRD/WRQS/FeatureServer/2/query?` +
+            `where=1%3D1&` +
+            `geometry=${geomParam}&` +
+            `geometryType=esriGeometryPolygon&` +
+            `inSR=4326&` +
+            `spatialRel=esriSpatialRelIntersects&` +
+            `outFields=WR_NUMBER,OWNERS,PURPOSES,ENF_PRTY_DT_CHAR,MAX_FLOW_CFS,MAX_ACRES,WR_STATUS,WR_TYPE,SOURCE_NAME&` +
+            `returnGeometry=false&` +
+            `f=json&` +
+            `resultRecordCount=100`;
+
+        console.log('Querying water rights (POD + POU) for parcel...');
+
+        // Fetch both in parallel
+        const [podResponse, pouResponse] = await Promise.all([
+            fetch(podUrl),
+            fetch(pouUrl)
+        ]);
+
+        const podData = await podResponse.json();
+        const pouData = await pouResponse.json();
+
+        // Tag sources and merge
+        const podFeatures = (podData.features || []).map(f => ({ ...f, source: 'POD' }));
+        const pouFeatures = (pouData.features || []).map(f => ({ ...f, source: 'POU' }));
+        const allRights = [...podFeatures, ...pouFeatures];
+
+        const uniqueRights = new Map();
+
+        for (const right of allRights) {
+            const wrNum = right.attributes.WR_NUMBER;
+            if (!uniqueRights.has(wrNum)) {
+                uniqueRights.set(wrNum, right);
+            } else {
+                // Merge data - combine both POD and POU
+                const existing = uniqueRights.get(wrNum);
+
+                // Track both sources
+                if (existing.source !== right.source) {
+                    existing.source = 'POD+POU';
+                }
+
+                // Merge missing attributes
+                if (!existing.attributes.SOURCE_NAME && right.attributes.SOURCE_NAME) {
+                    existing.attributes.SOURCE_NAME = right.attributes.SOURCE_NAME;
+                }
+                if (!existing.attributes.MAX_FLOW_CFS && right.attributes.MAX_FLOW_CFS) {
+                    existing.attributes.MAX_FLOW_CFS = right.attributes.MAX_FLOW_CFS;
+                }
+            }
+        }
+
+        const deduped = Array.from(uniqueRights.values());
+        console.log(`Found ${deduped.length} unique water rights (${podData.features?.length || 0} POD + ${pouData.features?.length || 0} POU)`);
+        return deduped;
+    } catch (error) {
+        console.error('Error fetching water rights:', error);
+        return [];
+    }
+}
+
+// Function to show parcel popup with water rights
+async function showParcelPopup(lngLat, p, geometry) {
+    // Query water rights for this parcel
+    const waterRights = await getWaterRightsForParcel(geometry);
+
+    // Format owner address
+    let ownerAddr = '';
+    if (p.OwnerAddress1) ownerAddr += p.OwnerAddress1;
+    if (p.OwnerAddress2) ownerAddr += (ownerAddr ? ', ' : '') + p.OwnerAddress2;
+    if (p.OwnerCity || p.OwnerState || p.OwnerZipCode) {
+        ownerAddr += '<br>' + [p.OwnerCity, p.OwnerState, p.OwnerZipCode].filter(Boolean).join(', ');
+    }
+
+    // Property address
+    let propAddr = '';
+    if (p.AddressLine1) propAddr += p.AddressLine1;
+    if (p.AddressLine2) propAddr += (propAddr ? ', ' : '') + p.AddressLine2;
+    if (p.CityStateZip) propAddr += '<br>' + p.CityStateZip;
+
+    // Legal description
+    let legal = '';
+    if (p.LegalDescriptionShort) {
+        legal = p.LegalDescriptionShort;
+    } else {
+        const parts = [];
+        if (p.Township) parts.push(`T${p.Township}`);
+        if (p.Range) parts.push(`R${p.Range}`);
+        if (p.Section) parts.push(`S${p.Section}`);
+        legal = parts.join(' ');
+    }
+    if (p.Subdivision) legal += (legal ? '<br>' : '') + p.Subdivision;
+    if (p.CertificateOfSurvey) legal += (legal ? '<br>' : '') + 'COS: ' + p.CertificateOfSurvey;
+
+    // Build detailed popup
+    const html = `
+        <div style="font-family: -apple-system, sans-serif; min-width: 280px; max-width: 400px;">
+            <div style="font-weight: 700; font-size: 15px; margin-bottom: 12px; color: #1a1a1a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
+                Parcel ${p.PARCELID || 'N/A'}
+            </div>
+
+            ${p.OwnerName ? `
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Owner</div>
+                <div style="font-size: 13px; color: #1a1a1a; font-weight: 600;">${p.OwnerName}</div>
+                ${ownerAddr ? `<div style="font-size: 12px; color: #555; margin-top: 2px;">${ownerAddr}</div>` : ''}
+            </div>` : ''}
+
+            ${propAddr ? `
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Address</div>
+                <div style="font-size: 12px; color: #1a1a1a;">${propAddr}</div>
+            </div>` : ''}
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                ${p.GISAcres ? `
+                <div>
+                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Total Acres</div>
+                    <div style="font-size: 14px; color: #1a1a1a; font-weight: 600;">${parseFloat(p.GISAcres).toFixed(2)}</div>
+                </div>` : ''}
+                ${p.PropType ? `
+                <div>
+                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Property Type</div>
+                    <div style="font-size: 12px; color: #1a1a1a;">${p.PropType}</div>
+                </div>` : ''}
+            </div>
+
+            ${(p.TotalValue || p.TotalLandValue || p.TotalBuildingValue) ? `
+            <div style="margin-bottom: 12px; background: #f3f4f6; padding: 10px; border-radius: 6px;">
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Assessment Values (${p.TaxYear || 'N/A'})</div>
+                ${p.TotalValue ? `<div style="font-size: 13px; color: #1a1a1a;"><strong>Total:</strong> $${parseInt(p.TotalValue).toLocaleString()}</div>` : ''}
+                ${p.TotalLandValue ? `<div style="font-size: 12px; color: #555;">Land: $${parseInt(p.TotalLandValue).toLocaleString()}</div>` : ''}
+                ${p.TotalBuildingValue ? `<div style="font-size: 12px; color: #555;">Building: $${parseInt(p.TotalBuildingValue).toLocaleString()}</div>` : ''}
+            </div>` : ''}
+
+            ${legal ? `
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Legal Description</div>
+                <div style="font-size: 11px; color: #1a1a1a; line-height: 1.4;">${legal}</div>
+            </div>` : ''}
+
+            ${(p.IrrigatedAcres || p.GrazingAcres || p.ForestAcres) ? `
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Land Use Breakdown</div>
+                <div style="font-size: 11px; color: #555; line-height: 1.6;">
+                    ${p.IrrigatedAcres ? `Irrigated: ${parseFloat(p.IrrigatedAcres).toFixed(1)} ac<br>` : ''}
+                    ${p.GrazingAcres ? `Grazing: ${parseFloat(p.GrazingAcres).toFixed(1)} ac<br>` : ''}
+                    ${p.ForestAcres ? `Forest: ${parseFloat(p.ForestAcres).toFixed(1)} ac<br>` : ''}
+                    ${p.ContinuousCropAcres ? `Crop: ${parseFloat(p.ContinuousCropAcres).toFixed(1)} ac<br>` : ''}
+                    ${p.WildHayAcres ? `Wild Hay: ${parseFloat(p.WildHayAcres).toFixed(1)} ac<br>` : ''}
+                </div>
+            </div>` : ''}
+
+            ${waterRights.length > 0 ? `
+            <div style="margin-bottom: 12px; background: #f0f9ff; padding: 10px; border-radius: 6px; border: 1px solid #bae6fd;">
+                <div style="font-size: 11px; color: #0369a1; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">💧 Water Rights (${waterRights.length})</div>
+                <div style="font-size: 9px; color: #0284c7; margin-bottom: 6px; font-style: italic;">Includes both Points of Diversion (where water is taken) and Places of Use (where water is used)</div>
+                <div style="max-height: 180px; overflow-y: auto;">
+                    ${waterRights.map(wr => {
+                        const attr = wr.attributes;
+                        const sourceLabel = wr.source === 'POD' ? '📍 Diversion' : wr.source === 'POU' ? '🌾 Use' : '📍🌾 Both';
+                        return `
+                        <div style="font-size: 11px; padding: 6px 0; border-bottom: 1px solid #e0f2fe;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-weight: 600; color: #0c4a6e;">${attr.WR_NUMBER || 'N/A'}</div>
+                                <div style="font-size: 9px; background: #e0f2fe; padding: 2px 6px; border-radius: 3px; color: #0369a1;">${sourceLabel}</div>
+                            </div>
+                            ${attr.OWNERS ? `<div style="color: #555; margin-top: 2px;">Owner: ${attr.OWNERS.split(';')[0]}</div>` : ''}
+                            ${attr.SOURCE_NAME ? `<div style="color: #555;">Source: ${attr.SOURCE_NAME}</div>` : ''}
+                            ${attr.PURPOSES ? `<div style="color: #555;">Purpose: ${attr.PURPOSES}</div>` : ''}
+                            ${attr.MAX_FLOW_CFS ? `<div style="color: #555;">Flow: ${attr.MAX_FLOW_CFS} CFS</div>` : ''}
+                            ${attr.WR_STATUS ? `<div style="color: #555;">Status: ${attr.WR_STATUS}</div>` : ''}
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>` : ''}
+
+            <div style="font-size: 10px; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+                ${p.CountyName ? `${p.CountyName} County, Montana • ` : ''}Source: MT Cadastral MSDI & DNRC
+            </div>
+        </div>
+    `;
+
+    new maplibregl.Popup({ maxWidth: '420px' })
+        .setLngLat(lngLat)
+        .setHTML(html)
+        .addTo(map);
+}
 
 // Function to fetch parcels for current view
 async function loadParcelsInView() {
@@ -219,6 +460,16 @@ async function loadParcelsInView() {
                 });
 
                 map.addLayer({
+                    id: 'parcels-fill',
+                    type: 'fill',
+                    source: 'mt-parcels',
+                    paint: {
+                        'fill-color': 'transparent',
+                        'fill-opacity': 0
+                    }
+                });
+
+                map.addLayer({
                     id: 'parcels-line',
                     type: 'line',
                     source: 'mt-parcels',
@@ -229,108 +480,18 @@ async function loadParcelsInView() {
                     }
                 });
 
-                // Click handler with detailed property info
-                map.on('click', 'parcels-line', (e) => {
+                // Double-click handler with detailed property info
+                map.on('dblclick', 'parcels-line', (e) => {
+                    e.preventDefault(); // Prevent zoom
                     if (!e.features || !e.features[0]) return;
-                    const p = e.features[0].properties;
+                    showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
+                });
 
-                    // Format owner address
-                    let ownerAddr = '';
-                    if (p.OwnerAddress1) ownerAddr += p.OwnerAddress1;
-                    if (p.OwnerAddress2) ownerAddr += (ownerAddr ? ', ' : '') + p.OwnerAddress2;
-                    if (p.OwnerCity || p.OwnerState || p.OwnerZipCode) {
-                        ownerAddr += '<br>' + [p.OwnerCity, p.OwnerState, p.OwnerZipCode].filter(Boolean).join(', ');
-                    }
-
-                    // Property address
-                    let propAddr = '';
-                    if (p.AddressLine1) propAddr += p.AddressLine1;
-                    if (p.AddressLine2) propAddr += (propAddr ? ', ' : '') + p.AddressLine2;
-                    if (p.CityStateZip) propAddr += '<br>' + p.CityStateZip;
-
-                    // Legal description
-                    let legal = '';
-                    if (p.LegalDescriptionShort) {
-                        legal = p.LegalDescriptionShort;
-                    } else {
-                        const parts = [];
-                        if (p.Township) parts.push(`T${p.Township}`);
-                        if (p.Range) parts.push(`R${p.Range}`);
-                        if (p.Section) parts.push(`S${p.Section}`);
-                        legal = parts.join(' ');
-                    }
-                    if (p.Subdivision) legal += (legal ? '<br>' : '') + p.Subdivision;
-                    if (p.CertificateOfSurvey) legal += (legal ? '<br>' : '') + 'COS: ' + p.CertificateOfSurvey;
-
-                    // Build detailed popup
-                    const html = `
-                        <div style="font-family: -apple-system, sans-serif; min-width: 280px; max-width: 400px;">
-                            <div style="font-weight: 700; font-size: 15px; margin-bottom: 12px; color: #1a1a1a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
-                                Parcel ${p.PARCELID || 'N/A'}
-                            </div>
-
-                            ${p.OwnerName ? `
-                            <div style="margin-bottom: 12px;">
-                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Owner</div>
-                                <div style="font-size: 13px; color: #1a1a1a; font-weight: 600;">${p.OwnerName}</div>
-                                ${ownerAddr ? `<div style="font-size: 12px; color: #555; margin-top: 2px;">${ownerAddr}</div>` : ''}
-                            </div>` : ''}
-
-                            ${propAddr ? `
-                            <div style="margin-bottom: 12px;">
-                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Address</div>
-                                <div style="font-size: 12px; color: #1a1a1a;">${propAddr}</div>
-                            </div>` : ''}
-
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
-                                ${p.GISAcres ? `
-                                <div>
-                                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Total Acres</div>
-                                    <div style="font-size: 14px; color: #1a1a1a; font-weight: 600;">${parseFloat(p.GISAcres).toFixed(2)}</div>
-                                </div>` : ''}
-                                ${p.PropType ? `
-                                <div>
-                                    <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600;">Property Type</div>
-                                    <div style="font-size: 12px; color: #1a1a1a;">${p.PropType}</div>
-                                </div>` : ''}
-                            </div>
-
-                            ${(p.TotalValue || p.TotalLandValue || p.TotalBuildingValue) ? `
-                            <div style="margin-bottom: 12px; background: #f3f4f6; padding: 10px; border-radius: 6px;">
-                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Assessment Values (${p.TaxYear || 'N/A'})</div>
-                                ${p.TotalValue ? `<div style="font-size: 13px; color: #1a1a1a;"><strong>Total:</strong> $${parseInt(p.TotalValue).toLocaleString()}</div>` : ''}
-                                ${p.TotalLandValue ? `<div style="font-size: 12px; color: #555;">Land: $${parseInt(p.TotalLandValue).toLocaleString()}</div>` : ''}
-                                ${p.TotalBuildingValue ? `<div style="font-size: 12px; color: #555;">Building: $${parseInt(p.TotalBuildingValue).toLocaleString()}</div>` : ''}
-                            </div>` : ''}
-
-                            ${legal ? `
-                            <div style="margin-bottom: 12px;">
-                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Legal Description</div>
-                                <div style="font-size: 11px; color: #1a1a1a; line-height: 1.4;">${legal}</div>
-                            </div>` : ''}
-
-                            ${(p.IrrigatedAcres || p.GrazingAcres || p.ForestAcres) ? `
-                            <div style="margin-bottom: 12px;">
-                                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Land Use Breakdown</div>
-                                <div style="font-size: 11px; color: #555; line-height: 1.6;">
-                                    ${p.IrrigatedAcres ? `Irrigated: ${parseFloat(p.IrrigatedAcres).toFixed(1)} ac<br>` : ''}
-                                    ${p.GrazingAcres ? `Grazing: ${parseFloat(p.GrazingAcres).toFixed(1)} ac<br>` : ''}
-                                    ${p.ForestAcres ? `Forest: ${parseFloat(p.ForestAcres).toFixed(1)} ac<br>` : ''}
-                                    ${p.ContinuousCropAcres ? `Crop: ${parseFloat(p.ContinuousCropAcres).toFixed(1)} ac<br>` : ''}
-                                    ${p.WildHayAcres ? `Wild Hay: ${parseFloat(p.WildHayAcres).toFixed(1)} ac<br>` : ''}
-                                </div>
-                            </div>` : ''}
-
-                            <div style="font-size: 10px; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
-                                ${p.CountyName ? `${p.CountyName} County, Montana • ` : ''}Source: MT Cadastral MSDI
-                            </div>
-                        </div>
-                    `;
-
-                    new maplibregl.Popup({ maxWidth: '420px' })
-                        .setLngLat(e.lngLat)
-                        .setHTML(html)
-                        .addTo(map);
+                // Double-click handler for parcel fill (anywhere on property)
+                map.on('dblclick', 'parcels-fill', (e) => {
+                    e.preventDefault();
+                    if (!e.features || !e.features[0]) return;
+                    showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
                 });
 
                 // Hover cursor
@@ -338,6 +499,12 @@ async function loadParcelsInView() {
                     map.getCanvas().style.cursor = 'pointer';
                 });
                 map.on('mouseleave', 'parcels-line', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+                map.on('mouseenter', 'parcels-fill', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', 'parcels-fill', () => {
                     map.getCanvas().style.cursor = '';
                 });
             }
@@ -349,10 +516,175 @@ async function loadParcelsInView() {
     }
 }
 
-// Load parcels when map is ready
+// Function to load Montana waterways (rivers, streams, lakes)
+async function loadWaterways() {
+    const bounds = map.getBounds();
+
+    // Build bbox for waterways query
+    const bbox = [
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth()
+    ].join(',');
+
+    // Load flowlines (rivers, streams)
+    const flowlineUrl = `https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Hydrography/MapServer/3/query?` +
+        `where=1%3D1&` +
+        `geometry=${bbox}&` +
+        `geometryType=esriGeometryEnvelope&` +
+        `inSR=4326&` +
+        `spatialRel=esriSpatialRelIntersects&` +
+        `outFields=GNIS_NAME,FTYPE&` +
+        `returnGeometry=true&` +
+        `outSR=4326&` +
+        `f=geojson`;
+
+    // Load waterbodies (lakes, ponds)
+    const waterbodyUrl = `https://gisservicemt.gov/arcgis/rest/services/MSDI_Framework/Hydrography/MapServer/5/query?` +
+        `where=1%3D1&` +
+        `geometry=${bbox}&` +
+        `geometryType=esriGeometryEnvelope&` +
+        `inSR=4326&` +
+        `spatialRel=esriSpatialRelIntersects&` +
+        `outFields=GNIS_NAME,FTYPE&` +
+        `returnGeometry=true&` +
+        `outSR=4326&` +
+        `f=geojson`;
+
+    try {
+        // Fetch flowlines
+        const flowlineResponse = await fetch(flowlineUrl);
+        const flowlineData = await flowlineResponse.json();
+
+        // Fetch waterbodies
+        const waterbodyResponse = await fetch(waterbodyUrl);
+        const waterbodyData = await waterbodyResponse.json();
+
+        console.log(`✓ Loaded ${flowlineData.features?.length || 0} streams/rivers, ${waterbodyData.features?.length || 0} lakes`);
+
+        // Add flowlines source and layer
+        if (flowlineData.features && flowlineData.features.length > 0) {
+            if (map.getSource('mt-flowlines')) {
+                map.getSource('mt-flowlines').setData(flowlineData);
+            } else {
+                map.addSource('mt-flowlines', {
+                    type: 'geojson',
+                    data: flowlineData
+                });
+
+                map.addLayer({
+                    id: 'flowlines',
+                    type: 'line',
+                    source: 'mt-flowlines',
+                    paint: {
+                        'line-color': '#1e90ff',
+                        'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 16, 2.5],
+                        'line-opacity': 0.8
+                    }
+                }, 'parcels-casing'); // Add before parcels so they're underneath
+            }
+        }
+
+        // Add waterbodies source and layer
+        if (waterbodyData.features && waterbodyData.features.length > 0) {
+            if (map.getSource('mt-waterbodies')) {
+                map.getSource('mt-waterbodies').setData(waterbodyData);
+            } else {
+                map.addSource('mt-waterbodies', {
+                    type: 'geojson',
+                    data: waterbodyData
+                });
+
+                map.addLayer({
+                    id: 'waterbodies-fill',
+                    type: 'fill',
+                    source: 'mt-waterbodies',
+                    paint: {
+                        'fill-color': '#1e90ff',
+                        'fill-opacity': 0.3
+                    }
+                }, 'parcels-casing');
+
+                map.addLayer({
+                    id: 'waterbodies-outline',
+                    type: 'line',
+                    source: 'mt-waterbodies',
+                    paint: {
+                        'line-color': '#1e90ff',
+                        'line-width': 1.5,
+                        'line-opacity': 0.8
+                    }
+                }, 'parcels-casing');
+            }
+        }
+
+        // Add hover cursor for waterways
+        map.on('mouseenter', 'flowlines', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'flowlines', () => {
+            map.getCanvas().style.cursor = '';
+        });
+        map.on('mouseenter', 'waterbodies-fill', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'waterbodies-fill', () => {
+            map.getCanvas().style.cursor = '';
+        });
+
+        // Simple click handler for waterways - just show name and type
+        map.on('click', 'flowlines', (e) => {
+            if (!e.features || !e.features[0]) return;
+            const p = e.features[0].properties;
+
+            const name = p.GNIS_NAME || 'Unnamed Stream';
+            const type = p.FTYPE || 'Stream';
+
+            new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                    <div style="font-family: -apple-system, sans-serif; padding: 8px;">
+                        <div style="font-weight: 600; font-size: 14px; color: #1e90ff;">${name}</div>
+                        <div style="font-size: 12px; color: #555; margin-top: 4px;">Type: ${type}</div>
+                        <div style="font-size: 10px; color: #999; margin-top: 6px;">
+                            💡 Look for blue water rights points along this waterway<br>
+                            Source: National Hydrography Dataset
+                        </div>
+                    </div>
+                `)
+                .addTo(map);
+        });
+
+        map.on('click', 'waterbodies-fill', (e) => {
+            if (!e.features || !e.features[0]) return;
+            const p = e.features[0].properties;
+
+            const name = p.GNIS_NAME || 'Unnamed Waterbody';
+            const type = p.FTYPE || 'Lake';
+
+            new maplibregl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(`
+                    <div style="font-family: -apple-system, sans-serif; padding: 8px;">
+                        <div style="font-weight: 600; font-size: 14px; color: #1e90ff;">${name}</div>
+                        <div style="font-size: 12px; color: #555; margin-top: 4px;">Type: ${type}</div>
+                        <div style="font-size: 10px; color: #999; margin-top: 6px;">Source: National Hydrography Dataset</div>
+                    </div>
+                `)
+                .addTo(map);
+        });
+
+    } catch (error) {
+        console.error('Error loading waterways:', error);
+    }
+}
+
+// Load parcels and waterways when map is ready
 map.on('load', () => {
-    console.log('Map loaded - Esri World Imagery');
+    console.log('Map loaded - Esri World Imagery + Street Labels + Waterways + Water Rights on Parcels');
     loadParcelsInView();
+    loadWaterways();
 });
 
 // Reload parcels when user finishes moving the map
