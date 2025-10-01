@@ -105,11 +105,22 @@
         <div style="width: 16px; height: 16px; background: rgba(30, 144, 255, 0.3); border: 1px solid #1e90ff; margin-right: 8px; border-radius: 2px;"></div>
         <span>Lakes & Ponds</span>
     </div>
+    <div class="legend-item">
+        <div style="width: 12px; height: 12px; background: #f59e0b; border: 2px solid #78350f; margin-right: 8px; border-radius: 50%;"></div>
+        <span>Oil & Gas Wells</span>
+    </div>
+    <div class="legend-item">
+        <div style="width: 12px; height: 12px; background: #3b82f6; border: 2px solid #1e40af; margin-right: 8px; border-radius: 50%;"></div>
+        <span>Marine Vessels (AIS)</span>
+    </div>
     <div style="font-size: 10px; color: #666; margin-top: 8px;">
         • Montana Cadastral parcels<br>
         • OpenStreetMap street names<br>
         • NHD waterways<br>
         • DNRC water rights on parcels<br>
+        • MBOGC oil & gas wells with production data<br>
+        • AIS vessel tracking (live)<br>
+        • EIA Montana statistics in property popups<br>
         • Double-click properties for details
     </div>
 </div>
@@ -263,10 +274,50 @@ async function getWaterRightsForParcel(parcelGeometry) {
     }
 }
 
-// Function to show parcel popup with water rights
+// Function to query oil/gas wells for a parcel
+async function getOilWellsForParcel(parcelGeometry) {
+    try {
+        // Convert GeoJSON geometry to ArcGIS format
+        let arcgisGeometry;
+        if (parcelGeometry.type === 'Polygon') {
+            arcgisGeometry = { rings: parcelGeometry.coordinates };
+        } else if (parcelGeometry.type === 'MultiPolygon') {
+            arcgisGeometry = { rings: parcelGeometry.coordinates.flat(1) };
+        } else {
+            console.warn('Unsupported geometry type:', parcelGeometry.type);
+            return [];
+        }
+
+        // Use DNRC BOG Wells service with real API numbers
+        const url = `https://gis.dnrc.mt.gov/arcgis/rest/services/BOG/DataMiner/MapServer/11/query?` +
+            `where=1%3D1&` +
+            `geometry=${encodeURIComponent(JSON.stringify(arcgisGeometry))}&` +
+            `geometryType=esriGeometryPolygon&` +
+            `inSR=4326&` +
+            `spatialRel=esriSpatialRelIntersects&` +
+            `outFields=API_WellNo,Well_Nm,CoName,Status,Type&` +
+            `returnGeometry=false&` +
+            `f=json&` +
+            `resultRecordCount=50`;
+
+        console.log('Querying oil/gas wells for parcel...');
+        const response = await fetch(url);
+        const data = await response.json();
+        console.log(`Found ${data.features?.length || 0} oil/gas wells`);
+        return data.features || [];
+    } catch (error) {
+        console.error('Error fetching oil/gas wells:', error);
+        return [];
+    }
+}
+
+// Function to show parcel popup with water rights and oil wells
 async function showParcelPopup(lngLat, p, geometry) {
-    // Query water rights for this parcel
-    const waterRights = await getWaterRightsForParcel(geometry);
+    // Query both water rights and oil/gas wells in parallel
+    const [waterRights, oilWells] = await Promise.all([
+        getWaterRightsForParcel(geometry),
+        getOilWellsForParcel(geometry)
+    ]);
 
     // Format owner address
     let ownerAddr = '';
@@ -296,18 +347,24 @@ async function showParcelPopup(lngLat, p, geometry) {
     if (p.Subdivision) legal += (legal ? '<br>' : '') + p.Subdivision;
     if (p.CertificateOfSurvey) legal += (legal ? '<br>' : '') + 'COS: ' + p.CertificateOfSurvey;
 
+    // EIA data removed - showing well-specific production data instead
+
     // Build detailed popup
     const html = `
-        <div style="font-family: -apple-system, sans-serif; min-width: 280px; max-width: 400px;">
-            <div style="font-weight: 700; font-size: 15px; margin-bottom: 12px; color: #1a1a1a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
-                Parcel ${p.PARCELID || 'N/A'}
+        <div style="font-family: -apple-system, sans-serif; min-width: 280px; max-width: 420px;">
+            <div style="font-weight: 700; font-size: 16px; margin-bottom: 12px; color: #1a1a1a; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
+                ${p.OwnerName || `Parcel ${p.PARCELID || 'N/A'}`}
             </div>
 
             ${p.OwnerName ? `
+            <div style="font-size: 12px; color: #666; margin-bottom: 12px; padding: 8px; background: #f9fafb; border-radius: 4px;">
+                <strong>Parcel ID:</strong> ${p.PARCELID || 'N/A'}
+            </div>` : ''}
+
+            ${ownerAddr ? `
             <div style="margin-bottom: 12px;">
-                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Property Owner</div>
-                <div style="font-size: 13px; color: #1a1a1a; font-weight: 600;">${p.OwnerName}</div>
-                ${ownerAddr ? `<div style="font-size: 12px; color: #555; margin-top: 2px;">${ownerAddr}</div>` : ''}
+                <div style="font-size: 11px; color: #666; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">Owner Address</div>
+                <div style="font-size: 12px; color: #555; margin-top: 2px;">${ownerAddr}</div>
             </div>` : ''}
 
             ${propAddr ? `
@@ -380,8 +437,33 @@ async function showParcelPopup(lngLat, p, geometry) {
                 </div>
             </div>` : ''}
 
+            ${oilWells.length > 0 ? `
+            <div style="margin-bottom: 12px; background: #fef3c7; padding: 10px; border-radius: 6px; border: 1px solid #fbbf24;">
+                <div style="font-size: 11px; color: #92400e; text-transform: uppercase; font-weight: 600; margin-bottom: 4px;">🛢️ Oil & Gas Wells (${oilWells.length})</div>
+                <div id="wells-production-${p.PARCELID}" style="max-height: 200px; overflow-y: auto;">
+                    ${oilWells.map((well, idx) => {
+                        const attr = well.attributes;
+                        const statusColor = attr.Status === 'Producing' ? '#15803d' : attr.Status === 'Shut In' ? '#b91c1c' : '#6b7280';
+                        return `
+                        <div style="font-size: 11px; padding: 8px; margin-bottom: 6px; background: white; border-radius: 4px; border: 1px solid #fde68a;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <div style="font-weight: 600; color: #78350f;">${attr.Well_Nm || 'Unnamed Well'}</div>
+                                <div style="font-size: 9px; background: ${statusColor}; color: white; padding: 2px 6px; border-radius: 3px;">${attr.Status || 'Unknown'}</div>
+                            </div>
+                            ${attr.CoName ? `<div style="color: #92400e; font-size: 10px; margin-bottom: 2px;">Operator: ${attr.CoName}</div>` : ''}
+                            ${attr.API_WellNo && attr.API_WellNo !== 0 ? `<div style="color: #78350f; font-size: 10px; margin-bottom: 2px;">API: ${attr.API_WellNo}</div>` : ''}
+                            ${attr.Type ? `<div style="color: #78350f; font-size: 10px; margin-bottom: 4px;">Type: ${attr.Type}</div>` : ''}
+                            <div id="well-prod-${attr.API_WellNo || idx}" style="background: #dcfce7; padding: 6px; border-radius: 3px; margin-top: 4px;">
+                                <div style="font-size: 9px; color: #166534; text-align: center;">Loading production data...</div>
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>` : ''}
+
             <div style="font-size: 10px; color: #999; margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
-                ${p.CountyName ? `${p.CountyName} County, Montana • ` : ''}Source: MT Cadastral MSDI & DNRC
+                ${p.CountyName ? `${p.CountyName} County, Montana • ` : ''}Source: MT Cadastral MSDI, DNRC & ArcGIS
             </div>
         </div>
     `;
@@ -390,6 +472,59 @@ async function showParcelPopup(lngLat, p, geometry) {
         .setLngLat(lngLat)
         .setHTML(html)
         .addTo(map);
+
+    // Fetch production data for each well on this property
+    if (oilWells.length > 0) {
+        oilWells.forEach(async (well, idx) => {
+            const attr = well.attributes;
+            const apiNumber = attr.API_WellNo;
+
+            if (apiNumber && apiNumber !== 0) {
+                try {
+                    const response = await fetch(`http://localhost:8001/api/well-production/${apiNumber}`);
+                    if (response.ok) {
+                        const prodData = await response.json();
+                        const prodElement = document.getElementById(`well-prod-${apiNumber}`);
+
+                        if (prodElement) {
+                            prodElement.innerHTML = `
+                                <div style="font-size: 10px; color: #166534; font-weight: 600; margin-bottom: 3px;">📊 Production Data</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                                    <div>
+                                        <div style="font-size: 9px; color: #166534;">Oil (BBL/day)</div>
+                                        <div style="font-size: 13px; color: #15803d; font-weight: 700;">${prodData.barrels_per_day.toLocaleString()}</div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 9px; color: #166534;">Gas (MCF/day)</div>
+                                        <div style="font-size: 13px; color: #15803d; font-weight: 700;">${prodData.mcf_per_day.toLocaleString()}</div>
+                                    </div>
+                                </div>
+                                <div style="font-size: 8px; color: #166534; margin-top: 4px; padding-top: 4px; border-top: 1px solid #86efac;">
+                                    Total: ${prodData.total_oil_bbls.toLocaleString()} BBL oil • ${prodData.total_gas_mcf.toLocaleString()} MCF gas
+                                </div>
+                            `;
+                        }
+                    } else {
+                        const prodElement = document.getElementById(`well-prod-${apiNumber}`);
+                        if (prodElement) {
+                            prodElement.innerHTML = `<div style="font-size: 9px; color: #dc2626; text-align: center;">No production data available</div>`;
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error fetching production for well ${apiNumber}:`, error);
+                    const prodElement = document.getElementById(`well-prod-${apiNumber}`);
+                    if (prodElement) {
+                        prodElement.innerHTML = `<div style="font-size: 9px; color: #dc2626; text-align: center;">Error loading data</div>`;
+                    }
+                }
+            } else {
+                const prodElement = document.getElementById(`well-prod-${idx}`);
+                if (prodElement) {
+                    prodElement.innerHTML = `<div style="font-size: 9px; color: #78716c; text-align: center;">No API number available</div>`;
+                }
+            }
+        });
+    }
 }
 
 // Function to fetch parcels for current view
@@ -680,11 +815,324 @@ async function loadWaterways() {
     }
 }
 
-// Load parcels and waterways when map is ready
+// Function to load oil/gas wells as markers
+async function loadOilWells() {
+    const bounds = map.getBounds();
+    const bbox = [
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth()
+    ].join(',');
+
+    // Use DNRC BOG Wells service with real API numbers
+    const oilWellsUrl = `https://gis.dnrc.mt.gov/arcgis/rest/services/BOG/DataMiner/MapServer/11/query?` +
+        `where=1%3D1&` +
+        `geometry=${bbox}&` +
+        `geometryType=esriGeometryEnvelope&` +
+        `inSR=4326&` +
+        `spatialRel=esriSpatialRelIntersects&` +
+        `outFields=API_WellNo,Well_Nm,CoName,Status,Type&` +
+        `returnGeometry=true&` +
+        `outSR=4326&` +
+        `f=geojson&` +
+        `resultRecordCount=500`;
+
+    try {
+        const response = await fetch(oilWellsUrl);
+        const data = await response.json();
+
+        console.log(`✓ Loaded ${data.features?.length || 0} oil/gas wells`);
+
+        if (data.features && data.features.length > 0) {
+            if (map.getSource('oil-wells')) {
+                map.getSource('oil-wells').setData(data);
+            } else {
+                map.addSource('oil-wells', {
+                    type: 'geojson',
+                    data: data
+                });
+
+                // Add oil wells as barrel icon symbols
+                map.addLayer({
+                    id: 'oil-wells-points',
+                    type: 'circle',
+                    source: 'oil-wells',
+                    paint: {
+                        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 16, 8],
+                        'circle-color': [
+                            'match',
+                            ['get', 'Status'],
+                            'Producing', '#f59e0b',
+                            'Shut In', '#ef4444',
+                            '#9ca3af'
+                        ],
+                        'circle-stroke-width': 2,
+                        'circle-stroke-color': '#78350f',
+                        'circle-opacity': 0.9
+                    }
+                });
+
+                // Hover effect
+                map.on('mouseenter', 'oil-wells-points', () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', 'oil-wells-points', () => {
+                    map.getCanvas().style.cursor = '';
+                });
+
+                // Click handler with production data
+                map.on('click', 'oil-wells-points', async (e) => {
+                    if (!e.features || !e.features[0]) return;
+                    const p = e.features[0].properties;
+
+                    const statusColor = p.Status === 'Producing' ? '#15803d' : p.Status === 'Shut In' ? '#b91c1c' : '#6b7280';
+
+                    // Create popup with loading state
+                    const popup = new maplibregl.Popup({ maxWidth: '400px' })
+                        .setLngLat(e.lngLat)
+                        .setHTML(`
+                            <div style="font-family: -apple-system, sans-serif; padding: 12px; min-width: 300px;">
+                                <div style="font-weight: 700; font-size: 15px; color: #78350f; margin-bottom: 8px;">
+                                    🛢️ ${p.Well_Nm || 'Unnamed Well'}
+                                </div>
+                                <div style="text-align: center; padding: 20px; color: #666;">
+                                    Loading production data...
+                                </div>
+                            </div>
+                        `)
+                        .addTo(map);
+
+                    // Fetch and display production data
+                    let productionHtml = '';
+                    if (p.API_WellNo && p.API_WellNo !== 0) {
+                        try {
+                            const response = await fetch(`http://localhost:8001/api/well-production/${p.API_WellNo}`);
+                            if (response.ok) {
+                                const prodData = await response.json();
+                                productionHtml = `
+                                    <div style="background: #dcfce7; padding: 10px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #15803d;">
+                                        <div style="font-size: 11px; color: #166534; font-weight: 600; margin-bottom: 6px;">📊 Production Data</div>
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                                            <div>
+                                                <div style="font-size: 10px; color: #166534; font-weight: 600;">Oil (BBL/day)</div>
+                                                <div style="font-size: 14px; color: #15803d; font-weight: 700;">${prodData.barrels_per_day.toLocaleString()}</div>
+                                            </div>
+                                            <div>
+                                                <div style="font-size: 10px; color: #166534; font-weight: 600;">Gas (MCF/day)</div>
+                                                <div style="font-size: 14px; color: #15803d; font-weight: 700;">${prodData.mcf_per_day.toLocaleString()}</div>
+                                            </div>
+                                        </div>
+                                        <div style="font-size: 9px; color: #166534; margin-top: 4px;">
+                                            Total: ${prodData.total_oil_bbls.toLocaleString()} BBL oil, ${prodData.total_gas_mcf.toLocaleString()} MCF gas
+                                        </div>
+                                        ${prodData.latest_production_month ? `
+                                        <div style="font-size: 9px; color: #166534; margin-top: 2px;">
+                                            Latest: ${prodData.latest_production_month}
+                                        </div>` : ''}
+                                    </div>
+                                `;
+                            } else {
+                                // No data in database - show link to DNRC
+                                productionHtml = `
+                                    <div style="background: #fef3c7; padding: 8px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #f59e0b;">
+                                        <div style="font-size: 10px; color: #78350f;">
+                                            Production data not yet imported. <a href="https://bogapps.dnrc.mt.gov/dataminer/Production/ProductionByWell.aspx?API=${p.API_WellNo}" target="_blank" style="color: #92400e; text-decoration: underline;">View at DNRC</a>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+                        } catch (error) {
+                            console.error('Error fetching production data:', error);
+                            productionHtml = `
+                                <div style="background: #fef3c7; padding: 8px; border-radius: 4px; margin-bottom: 10px; border-left: 3px solid #f59e0b;">
+                                    <div style="font-size: 10px; color: #78350f;">
+                                        Production database not available. <a href="https://bogapps.dnrc.mt.gov/dataminer/Production/ProductionByWell.aspx?API=${p.API_WellNo}" target="_blank" style="color: #92400e; text-decoration: underline;">View at DNRC</a>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }
+
+                    // Update popup with complete information
+                    const html = `
+                        <div style="font-family: -apple-system, sans-serif; padding: 12px; min-width: 300px; max-width: 380px;">
+                            <div style="font-weight: 700; font-size: 15px; color: #78350f; margin-bottom: 8px; border-bottom: 2px solid #f59e0b; padding-bottom: 6px;">
+                                🛢️ ${p.Well_Nm || 'Unnamed Well'}
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <div style="font-size: 12px; color: #92400e; font-weight: 600;">Status:</div>
+                                <div style="font-size: 11px; background: ${statusColor}; color: white; padding: 3px 10px; border-radius: 4px; font-weight: 600;">
+                                    ${p.Status || 'Unknown'}
+                                </div>
+                            </div>
+
+                            ${productionHtml}
+
+                            ${p.CoName ? `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 3px;">Operator:</div>
+                                <div style="font-size: 12px; color: #1a1a1a;">${p.CoName}</div>
+                            </div>` : ''}
+
+                            ${p.API_WellNo && p.API_WellNo !== 0 ? `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 3px;">API Number:</div>
+                                <div style="font-size: 12px; color: #1a1a1a; font-family: monospace;">${p.API_WellNo}</div>
+                            </div>` : ''}
+
+                            ${p.Type ? `
+                            <div style="margin-bottom: 10px;">
+                                <div style="font-size: 11px; color: #92400e; font-weight: 600; margin-bottom: 3px;">Well Type:</div>
+                                <div style="font-size: 12px; color: #1a1a1a;">${p.Type}</div>
+                            </div>` : ''}
+
+                            <div style="font-size: 9px; color: #999; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+                                Source: Montana Board of Oil & Gas Conservation
+                            </div>
+                        </div>
+                    `;
+
+                    popup.setHTML(html);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading oil wells:', error);
+    }
+}
+
+// AIS Stream vessel tracking
+let aisWebSocket = null;
+const vesselData = new Map(); // Store vessel positions
+
+function connectAISStream() {
+    try {
+        aisWebSocket = new WebSocket('ws://localhost:8001/ws/ais');
+
+        aisWebSocket.onopen = () => {
+            console.log('Connected to AIS stream');
+        };
+
+        aisWebSocket.onmessage = (event) => {
+            try {
+                const aisMessage = JSON.parse(event.data);
+
+                // Extract vessel position from AIS message
+                if (aisMessage.MetaData && aisMessage.MetaData.latitude && aisMessage.MetaData.longitude) {
+                    const mmsi = aisMessage.MetaData.MMSI || 'unknown';
+                    const lat = aisMessage.MetaData.latitude;
+                    const lon = aisMessage.MetaData.longitude;
+
+                    // Store vessel data
+                    vesselData.set(mmsi, {
+                        type: 'Feature',
+                        properties: {
+                            mmsi: mmsi,
+                            messageType: aisMessage.MessageType,
+                            ...aisMessage.Message
+                        },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [lon, lat]
+                        }
+                    });
+
+                    // Update map layer
+                    updateVesselLayer();
+                }
+            } catch (error) {
+                console.error('Error processing AIS message:', error);
+            }
+        };
+
+        aisWebSocket.onerror = (error) => {
+            console.error('AIS WebSocket error:', error);
+        };
+
+        aisWebSocket.onclose = () => {
+            console.log('AIS WebSocket closed. Reconnecting in 5 seconds...');
+            setTimeout(connectAISStream, 5000);
+        };
+    } catch (error) {
+        console.error('Failed to connect to AIS stream:', error);
+        setTimeout(connectAISStream, 5000);
+    }
+}
+
+function updateVesselLayer() {
+    if (!map.getSource('vessels')) {
+        map.addSource('vessels', {
+            type: 'geojson',
+            data: {
+                type: 'FeatureCollection',
+                features: Array.from(vesselData.values())
+            }
+        });
+
+        map.addLayer({
+            id: 'vessel-points',
+            type: 'symbol',
+            source: 'vessels',
+            layout: {
+                'icon-image': 'vessel-emoji',
+                'icon-size': 1.5,
+                'icon-allow-overlap': true,
+                'text-field': '🚢',
+                'text-size': 24,
+                'text-allow-overlap': true
+            }
+        });
+
+        // Add vessel click handler
+        map.on('click', 'vessel-points', (e) => {
+            const p = e.features[0].properties;
+            const html = `
+                <div style="font-family: -apple-system, sans-serif; padding: 12px; min-width: 250px;">
+                    <div style="font-weight: 700; font-size: 14px; color: #1e40af; margin-bottom: 8px;">
+                        🚢 Vessel ${p.mmsi}
+                    </div>
+                    <div style="font-size: 11px; color: #555;">
+                        ${p.ShipName ? `<div><strong>Name:</strong> ${p.ShipName}</div>` : ''}
+                        ${p.CallSign ? `<div><strong>Call Sign:</strong> ${p.CallSign}</div>` : ''}
+                        ${p.VesselType ? `<div><strong>Type:</strong> ${p.VesselType}</div>` : ''}
+                        ${p.NavigationalStatus ? `<div><strong>Status:</strong> ${p.NavigationalStatus}</div>` : ''}
+                        ${p.Cog ? `<div><strong>Course:</strong> ${p.Cog}°</div>` : ''}
+                        ${p.Sog ? `<div><strong>Speed:</strong> ${p.Sog} knots</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            new maplibregl.Popup({ maxWidth: '300px' })
+                .setLngLat(e.lngLat)
+                .setHTML(html)
+                .addTo(map);
+        });
+
+        map.on('mouseenter', 'vessel-points', () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+
+        map.on('mouseleave', 'vessel-points', () => {
+            map.getCanvas().style.cursor = '';
+        });
+    } else {
+        // Update existing source
+        map.getSource('vessels').setData({
+            type: 'FeatureCollection',
+            features: Array.from(vesselData.values())
+        });
+    }
+}
+
+// Load parcels, waterways, and oil wells when map is ready
 map.on('load', () => {
-    console.log('Map loaded - Esri World Imagery + Street Labels + Waterways + Water Rights on Parcels');
+    console.log('Map loaded - Esri World Imagery + Street Labels + Waterways + Water Rights + Oil Wells + AIS Vessels');
     loadParcelsInView();
     loadWaterways();
+    loadOilWells();
+    connectAISStream();
 });
 
 // Reload parcels when user finishes moving the map
