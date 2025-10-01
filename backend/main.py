@@ -10,7 +10,7 @@ from tiles import get_ownership_tile
 import json
 from pathlib import Path
 from production_db import get_well_production
-from eia_api import get_all_montana_data, format_eia_data_for_display
+from eia_api import get_all_montana_data, format_eia_data_for_display, get_montana_power_plants, format_power_plant_data
 from ais_stream import ais_manager
 import asyncio
 
@@ -47,7 +47,9 @@ async def root():
             "tiles": "/tiles/ownership/{z}/{x}/{y}.pbf",
             "ownership_data": "/data/ownership.geojson",
             "parcels_data": "/data/parcels.geojson",
-            "well_production": "/api/well-production/{api_number}"
+            "well_production": "/api/well-production/{api_number}",
+            "eia_montana_data": "/api/eia/montana-data",
+            "power_plants": "/api/eia/power-plants"
         }
     }
 
@@ -166,6 +168,73 @@ async def get_montana_eia_data():
             formatted_data[category] = []
 
     return formatted_data
+
+
+@app.get("/api/eia/power-plants")
+async def get_power_plants():
+    """
+    Fetch all electricity-generating power plants in Montana from EIA Form 860 data.
+
+    Returns GeoJSON FeatureCollection with power plant locations and details:
+    - Plant name and ID
+    - Location (latitude/longitude)
+    - Technology type (e.g., Conventional Hydroelectric, Solar Photovoltaic, Wind)
+    - Nameplate capacity in megawatts (MW)
+    - County, grid operator, operational status
+    """
+    raw_data = await get_montana_power_plants()
+
+    if not raw_data:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to fetch power plant data from EIA API. The service may be temporarily unavailable."
+        )
+
+    # Format the data into a clean structure
+    plants = format_power_plant_data(raw_data)
+
+    # Convert to GeoJSON for mapping
+    features = []
+    plants_without_coords = []
+
+    for plant in plants:
+        if plant.get("latitude") and plant.get("longitude"):
+            try:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [float(plant["longitude"]), float(plant["latitude"])]
+                    },
+                    "properties": {
+                        "plant_id": plant.get("plant_id"),
+                        "plant_name": plant.get("plant_name"),
+                        "technology": plant.get("technology"),
+                        "capacity_mw": plant.get("capacity_mw"),
+                        "county": plant.get("county"),
+                        "balancing_authority": plant.get("balancing_authority"),
+                        "status": plant.get("status"),
+                        "statusDescription": plant.get("statusDescription"),
+                        "primary_fuel": plant.get("primary_fuel"),
+                        "sector": plant.get("sector")
+                    }
+                })
+            except (ValueError, TypeError):
+                plants_without_coords.append(plant.get("plant_name"))
+        else:
+            plants_without_coords.append(plant.get("plant_name"))
+
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {
+            "total_plants": len(features),
+            "total_capacity_mw": round(sum(f["properties"]["capacity_mw"] for f in features if f["properties"].get("capacity_mw")), 2),
+            "plants_without_coordinates": len(plants_without_coords),
+            "source": "EIA Form 860 - Inventory of Operable Generators",
+            "note": "Geographic data for Montana power plants with coordinates"
+        }
+    }
 
 
 @app.websocket("/ws/ais")

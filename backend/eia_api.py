@@ -151,6 +151,160 @@ async def get_all_montana_data() -> Dict:
     }
 
 
+async def get_montana_power_plants() -> Optional[Dict]:
+    """
+    Fetch all electricity-generating power plants in Montana.
+
+    Uses the EIA Form 860 generator data which includes:
+    - Plant name and ID
+    - Location (latitude/longitude)
+    - Technology type (e.g., Conventional Hydroelectric, Solar Photovoltaic)
+    - Nameplate capacity in megawatts (MW)
+
+    Returns:
+        Dictionary containing power plant data or None if error
+    """
+    # EIA API v2 endpoint for generator data (Form 860)
+    endpoint = "electricity/operating-generator-capacity/data"
+
+    # Try multiple parameter combinations since the API can be finicky
+    # IMPORTANT: Request latitude, longitude, and capacity as data columns
+    param_sets = [
+        # Try 1: Annual frequency with coordinates and capacity
+        {
+            "api_key": EIA_API_KEY,
+            "frequency": "annual",
+            "data[0]": "latitude",
+            "data[1]": "longitude",
+            "data[2]": "nameplate-capacity-mw",
+            "facets[stateid][]": "MT",
+            "offset": 0,
+            "length": 5000
+        },
+        # Try 2: Monthly with specific period and all location/capacity fields
+        {
+            "api_key": EIA_API_KEY,
+            "frequency": "monthly",
+            "data[0]": "latitude",
+            "data[1]": "longitude",
+            "data[2]": "nameplate-capacity-mw",
+            "data[3]": "county",
+            "facets[stateid][]": "MT",
+            "start": "2023-01",
+            "end": "2024-12",
+            "offset": 0,
+            "length": 5000
+        },
+        # Try 3: Just the most recent monthly data with all fields
+        {
+            "api_key": EIA_API_KEY,
+            "frequency": "monthly",
+            "data[0]": "latitude",
+            "data[1]": "longitude",
+            "data[2]": "nameplate-capacity-mw",
+            "facets[stateid][]": "MT",
+            "sort[0][column]": "period",
+            "sort[0][direction]": "desc",
+            "offset": 0,
+            "length": 5000
+        }
+    ]
+
+    url = f"{EIA_BASE_URL}/{endpoint}"
+
+    for i, params in enumerate(param_sets):
+        try:
+            print(f"Attempting power plant query #{i+1}...")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                # Check if we got any data
+                if data and data.get("response", {}).get("data"):
+                    print(f"Success! Got {len(data['response']['data'])} generator records")
+                    return data
+                else:
+                    print(f"Query #{i+1} returned no data")
+        except Exception as e:
+            print(f"Query #{i+1} failed: {e}")
+            continue
+
+    print("All query attempts failed for Montana power plants")
+    return None
+
+
+def format_power_plant_data(data: Dict) -> List[Dict]:
+    """
+    Format power plant data from EIA API response into clean structure.
+
+    Args:
+        data: Raw EIA API response containing generator data
+
+    Returns:
+        List of dictionaries with plant information including:
+        - plant_name: Name of the power plant
+        - plant_id: EIA plant identifier
+        - latitude: Plant latitude coordinate (may be None if not in API response)
+        - longitude: Plant longitude coordinate (may be None if not in API response)
+        - technology: Type of generation technology
+        - capacity_mw: Nameplate capacity in megawatts
+        - county: County where plant is located
+        - balancing_authority: Grid operator
+    """
+    if not data or "response" not in data:
+        return []
+
+    response = data.get("response", {})
+    generators = response.get("data", [])
+
+    if not generators:
+        return []
+
+    # Debug: Print first generator to see available fields
+    print(f"Sample generator fields: {list(generators[0].keys())[:20]}")
+
+    # Process and deduplicate by plant
+    plants = {}
+    for gen in generators:
+        plant_id = gen.get("plantid")
+        if not plant_id:
+            continue
+
+        if plant_id not in plants:
+            plants[plant_id] = {
+                "plant_id": plant_id,
+                "plant_name": gen.get("plantName", "Unknown"),
+                "latitude": gen.get("latitude"),  # Now requested via data[] parameter
+                "longitude": gen.get("longitude"),  # Now requested via data[] parameter
+                "technology": gen.get("technology", "Unknown"),
+                "capacity_mw": 0.0,  # Will aggregate from nameplate-capacity-mw
+                "county": gen.get("county", ""),
+                "balancing_authority": gen.get("balancing_authority_code", ""),
+                "status": gen.get("status", ""),
+                "statusDescription": gen.get("statusDescription", ""),
+                "primary_fuel": gen.get("energy_source_code", ""),
+                "sector": gen.get("sector", ""),
+                "state": gen.get("stateName", "Montana")
+            }
+
+        # Aggregate nameplate capacity in megawatts
+        capacity = gen.get("nameplate-capacity-mw")
+        if capacity is not None:
+            try:
+                plants[plant_id]["capacity_mw"] += float(capacity)
+            except (ValueError, TypeError):
+                # If capacity isn't a valid number, just count the generator
+                plants[plant_id]["capacity_mw"] += 1
+
+    # Round capacity to 2 decimal places
+    for plant in plants.values():
+        plant["capacity_mw"] = round(plant["capacity_mw"], 2)
+
+    print(f"Processed {len(plants)} unique power plants from {len(generators)} generators")
+    return list(plants.values())
+
+
 def format_eia_data_for_display(data: Dict) -> List[Dict]:
     """
     Format EIA API response for frontend display

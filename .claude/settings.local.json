@@ -32,7 +32,14 @@
       "Bash(findstr:*)",
       "WebFetch(domain:mtdnrc.hub.arcgis.com)",
       "WebFetch(domain:opendata-mtdnrc.hub.arcgis.com)",
-      "WebFetch(domain:svc.mt.gov)"
+      "WebFetch(domain:svc.mt.gov)",
+      "WebFetch(domain:www.eia.gov)",
+      "Bash(timeout:*)",
+      "Bash(PYTHONDONTWRITEBYTECODE=1 python -m uvicorn main:app --host 0.0.0.0 --port 8001)",
+      "Bash(grep:*)",
+      "Bash(PYTHONDONTWRITEBYTECODE=1 python -m uvicorn main:app --host 127.0.0.1 --port 8001)",
+      "Bash(tasklist)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

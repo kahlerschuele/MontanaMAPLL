@@ -8,36 +8,36 @@
         "coordinates": [
           [
             [
-              -111.044,
-              45.679
+              -111.470,
+              45.940
             ],
             [
-              -111.043,
-              45.679
+              -111.465,
+              45.940
             ],
             [
-              -111.043,
-              45.678
+              -111.465,
+              45.935
             ],
             [
-              -111.044,
-              45.678
+              -111.470,
+              45.935
             ],
             [
-              -111.044,
-              45.679
+              -111.470,
+              45.940
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12345",
-        "OWNERNAME": "SMITH, JOHN & JANE",
-        "MAILADD": "123 MAIN ST",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-001",
+        "OWNERNAME": "Smith Ranch LLC",
+        "MAILADD": "123 Ranch Road",
+        "MAILCITY": "Three Forks",
         "MAILSTATE": "MT",
-        "MAILZIP": "59715",
-        "ACRES": 0.25,
+        "MAILZIP": "59752",
+        "ACRES": 160.5,
         "TAXVALUE": 425000
       }
     },
@@ -48,37 +48,37 @@
         "coordinates": [
           [
             [
-              -111.043,
-              45.679
+              -111.465,
+              45.940
             ],
             [
-              -111.042,
-              45.679
+              -111.460,
+              45.940
             ],
             [
-              -111.042,
-              45.678
+              -111.460,
+              45.935
             ],
             [
-              -111.043,
-              45.678
+              -111.465,
+              45.935
             ],
             [
-              -111.043,
-              45.679
+              -111.465,
+              45.940
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12346",
-        "OWNERNAME": "DOE FAMILY TRUST",
-        "MAILADD": "125 MAIN ST",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-002",
+        "OWNERNAME": "Johnson Family Trust",
+        "MAILADD": "456 Valley View",
+        "MAILCITY": "Bozeman",
         "MAILSTATE": "MT",
         "MAILZIP": "59715",
-        "ACRES": 0.23,
-        "TAXVALUE": 398000
+        "ACRES": 120.0,
+        "TAXVALUE": 380000
       }
     },
     {
@@ -88,37 +88,37 @@
         "coordinates": [
           [
             [
-              -111.042,
-              45.679
+              -111.470,
+              45.935
             ],
             [
-              -111.041,
-              45.679
+              -111.465,
+              45.935
             ],
             [
-              -111.041,
-              45.678
+              -111.465,
+              45.930
             ],
             [
-              -111.042,
-              45.678
+              -111.470,
+              45.930
             ],
             [
-              -111.042,
-              45.679
+              -111.470,
+              45.935
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12347",
-        "OWNERNAME": "JOHNSON, MICHAEL R",
-        "MAILADD": "127 MAIN ST",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-003",
+        "OWNERNAME": "GCC Trident Solar LLC",
+        "MAILADD": "789 Solar Drive",
+        "MAILCITY": "Three Forks",
         "MAILSTATE": "MT",
-        "MAILZIP": "59715",
-        "ACRES": 0.28,
-        "TAXVALUE": 445000
+        "MAILZIP": "59752",
+        "ACRES": 200.0,
+        "TAXVALUE": 1850000
       }
     },
     {
@@ -128,37 +128,37 @@
         "coordinates": [
           [
             [
-              -111.044,
-              45.678
+              -111.465,
+              45.935
             ],
             [
-              -111.043,
-              45.678
+              -111.460,
+              45.935
             ],
             [
-              -111.043,
-              45.677
+              -111.460,
+              45.930
             ],
             [
-              -111.044,
-              45.677
+              -111.465,
+              45.930
             ],
             [
-              -111.044,
-              45.678
+              -111.465,
+              45.935
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12348",
-        "OWNERNAME": "BROWN PROPERTIES LLC",
-        "MAILADD": "PO BOX 456",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-004",
+        "OWNERNAME": "Miller Cattle Company",
+        "MAILADD": "321 Beef Trail",
+        "MAILCITY": "Manhattan",
         "MAILSTATE": "MT",
-        "MAILZIP": "59715",
-        "ACRES": 0.26,
-        "TAXVALUE": 412000
+        "MAILZIP": "59741",
+        "ACRES": 320.5,
+        "TAXVALUE": 520000
       }
     },
     {
@@ -168,37 +168,37 @@
         "coordinates": [
           [
             [
-              -111.043,
-              45.678
+              -111.460,
+              45.940
             ],
             [
-              -111.042,
-              45.678
+              -111.455,
+              45.940
             ],
             [
-              -111.042,
-              45.677
+              -111.455,
+              45.935
             ],
             [
-              -111.043,
-              45.677
+              -111.460,
+              45.935
             ],
             [
-              -111.043,
-              45.678
+              -111.460,
+              45.940
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12349",
-        "OWNERNAME": "WILSON, SARAH J",
-        "MAILADD": "124 ELM ST",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-005",
+        "OWNERNAME": "Anderson Agricultural Holdings",
+        "MAILADD": "555 Wheat Road",
+        "MAILCITY": "Three Forks",
         "MAILSTATE": "MT",
-        "MAILZIP": "59715",
-        "ACRES": 0.24,
-        "TAXVALUE": 389000
+        "MAILZIP": "59752",
+        "ACRES": 180.0,
+        "TAXVALUE": 395000
       }
     },
     {
@@ -208,37 +208,37 @@
         "coordinates": [
           [
             [
-              -111.042,
-              45.678
+              -111.460,
+              45.935
             ],
             [
-              -111.041,
-              45.678
+              -111.455,
+              45.935
             ],
             [
-              -111.041,
-              45.677
+              -111.455,
+              45.930
             ],
             [
-              -111.042,
-              45.677
+              -111.460,
+              45.930
             ],
             [
-              -111.042,
-              45.678
+              -111.460,
+              45.935
             ]
           ]
         ]
       },
       "properties": {
-        "PARCELID": "R12350",
-        "OWNERNAME": "MARTINEZ FAMILY TRUST",
-        "MAILADD": "126 ELM ST",
-        "MAILCITY": "BOZEMAN",
+        "PARCELID": "GC-006",
+        "OWNERNAME": "Peterson Family Farm",
+        "MAILADD": "777 Farm Lane",
+        "MAILCITY": "Belgrade",
         "MAILSTATE": "MT",
-        "MAILZIP": "59715",
-        "ACRES": 0.27,
-        "TAXVALUE": 435000
+        "MAILZIP": "59714",
+        "ACRES": 240.0,
+        "TAXVALUE": 485000
       }
     }
   ]
