@@ -123,6 +123,30 @@
         • EIA Montana statistics in property popups<br>
         • Double-click properties for details
     </div>
+
+    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+        <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600;">Census Boundaries</h4>
+        <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" onchange="toggleTIGERLayer('counties')" checked style="margin-right: 6px;">
+            <div style="width: 16px; height: 3px; background: #FF00FF; margin-right: 6px;"></div>
+            <span>Counties (56) <span style="color: #999; font-size: 10px;">Always visible</span></span>
+        </label>
+        <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" onchange="toggleTIGERLayer('tracts')" style="margin-right: 6px;">
+            <div style="width: 16px; height: 2px; background: #FF6B6B; margin-right: 6px;"></div>
+            <span>Census Tracts (319) <span style="color: #999; font-size: 10px;">z10-15</span></span>
+        </label>
+        <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" onchange="toggleTIGERLayer('blockgroups')" style="margin-right: 6px;">
+            <div style="width: 16px; height: 2px; background: #4ECDC4; margin-right: 6px;"></div>
+            <span>Block Groups (900) <span style="color: #999; font-size: 10px;">z13-18</span></span>
+        </label>
+        <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" onchange="toggleTIGERLayer('places')" style="margin-right: 6px;">
+            <div style="width: 16px; height: 2px; background: #F7DC6F; margin-right: 6px;"></div>
+            <span>Places (497) <span style="color: #999; font-size: 10px;">z8-16</span></span>
+        </label>
+    </div>
 </div>
 
 <div class="info-box">
@@ -184,6 +208,61 @@ map.addControl(new maplibregl.NavigationControl(), 'top-left');
 map.addControl(new maplibregl.ScaleControl(), 'bottom-right');
 
 let parcelData = { type: 'FeatureCollection', features: [] };
+
+// Highlighted feature tracking
+let highlightedFeature = null;
+
+// Function to highlight a clicked feature
+function highlightFeature(feature) {
+    // Clear previous highlight
+    if (map.getSource('highlight')) {
+        map.getSource('highlight').setData({
+            type: 'FeatureCollection',
+            features: []
+        });
+    }
+
+    // Store the highlighted feature
+    highlightedFeature = feature;
+
+    // Add/update highlight source and layer
+    if (!map.getSource('highlight')) {
+        map.addSource('highlight', {
+            type: 'geojson',
+            data: {
+                type: 'FeatureCollection',
+                features: [feature]
+            }
+        });
+
+        map.addLayer({
+            id: 'highlight-line',
+            type: 'line',
+            source: 'highlight',
+            paint: {
+                'line-color': '#FFD700',  // Bright gold
+                'line-width': 4,
+                'line-opacity': 1
+            }
+        });
+    } else {
+        map.getSource('highlight').setData({
+            type: 'FeatureCollection',
+            features: [feature]
+        });
+    }
+}
+
+// Function to clear highlight
+function clearHighlight() {
+    if (map.getSource('highlight')) {
+        map.getSource('highlight').setData({
+            type: 'FeatureCollection',
+            features: []
+        });
+    }
+    highlightedFeature = null;
+}
 
 // Function to query water rights for a parcel
 async function getWaterRightsForParcel(parcelGeometry) {
@@ -582,15 +661,16 @@ async function loadParcelsInView() {
                     data: parcelData
                 });
 
-                // Add parcel layers
+                // Add parcel layers (visible at zoom 14+)
                 map.addLayer({
                     id: 'parcels-casing',
                     type: 'line',
                     source: 'mt-parcels',
+                    minzoom: 14,  // Appear at zoom 14
                     paint: {
                         'line-color': '#000',
-                        'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.8, 18, 4.5],
-                        'line-opacity': 0.65
+                        'line-width': ['interpolate', ['linear'], ['zoom'], 14, 1.2, 16, 2.5, 18, 4.5],
+                        'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.3, 16, 0.55, 18, 0.65]
                     }
                 });
 
@@ -598,6 +678,7 @@ async function loadParcelsInView() {
                     id: 'parcels-fill',
                     type: 'fill',
                     source: 'mt-parcels',
+                    minzoom: 14,
                     paint: {
                         'fill-color': 'transparent',
                         'fill-opacity': 0
@@ -608,10 +689,11 @@ async function loadParcelsInView() {
                     id: 'parcels-line',
                     type: 'line',
                     source: 'mt-parcels',
+                    minzoom: 14,  // Appear at zoom 14
                     paint: {
                         'line-color': '#fff',
-                        'line-width': ['interpolate', ['linear'], ['zoom'], 13, 1.2, 18, 3],
-                        'line-opacity': 1
+                        'line-width': ['interpolate', ['linear'], ['zoom'], 14, 0.9, 16, 2, 18, 3],
+                        'line-opacity': ['interpolate', ['linear'], ['zoom'], 14, 0.5, 16, 0.8, 18, 1]
                     }
                 });
 
@@ -619,6 +701,7 @@ async function loadParcelsInView() {
                 map.on('dblclick', 'parcels-line', (e) => {
                     e.preventDefault(); // Prevent zoom
                     if (!e.features || !e.features[0]) return;
+                    highlightFeature(e.features[0]);
                     showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
                 });
 
@@ -626,6 +709,7 @@ async function loadParcelsInView() {
                 map.on('dblclick', 'parcels-fill', (e) => {
                     e.preventDefault();
                     if (!e.features || !e.features[0]) return;
+                    highlightFeature(e.features[0]);
                     showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
                 });
 
@@ -1126,9 +1210,392 @@ function updateVesselLayer() {
     }
 }
 
+// TIGER/ACS Layer Configuration
+const tigerConfig = {
+    // All US states - thin gray lines at low zoom
+    usstates: {
+        file: './data/tiger/us_states.geojson',
+        lineColor: '#888888',  // Gray
+        lineWidth: 1.5,
+        fillColor: 'rgba(0, 0, 0, 0)',  // Transparent
+        minzoom: 0,
+        maxzoom: 6,  // Hide when zooming into Montana details
+        visible: true,
+        dashArray: null  // Solid line
+    },
+    // Montana state boundary - same style as other states
+    state: {
+        file: './data/montana_state.geojson',
+        lineColor: '#888888',  // Gray (same as US states)
+        lineWidth: 1.5,
+        minzoom: 0,
+        visible: true,
+        dashArray: null  // Solid line
+    },
+    // Counties - slightly lighter gray, thinner, distinguishable from states
+    counties: {
+        file: './data/tiger/mt_counties_acs.geojson',  // Use ACS-enhanced file
+        lineColor: '#AAAAAA',  // Light gray (lighter than state lines)
+        lineWidth: 1,
+        fillColor: 'rgba(170, 170, 170, 0.02)',
+        minzoom: 5,
+        visible: true,
+        dashArray: null  // Solid line, same as states
+    },
+    // Places (cities/towns) - visible at medium zoom
+    places: {
+        file: './data/tiger/mt_places.geojson',
+        lineColor: '#F7DC6F',
+        lineWidth: 1,
+        fillColor: 'rgba(247, 220, 111, 0.15)',
+        minzoom: 6,  // Show earlier for better visibility
+        visible: true,  // Turn on by default
+        dashArray: null
+    },
+    // Census tracts with ACS demographics - subtle dotted blue lines
+    tracts: {
+        file: './data/tiger/mt_tracts_acs.geojson',
+        lineColor: '#87CEEB',  // Sky blue (lighter, less prominent)
+        lineWidth: 0.6,
+        minzoom: 8,
+        maxzoom: 14,  // Hide when parcels appear at 14
+        visible: true,
+        dashArray: [1, 4],  // More subtle dotting: 1px dash, 4px gap
+        choropleth: {
+            property: 'median_household_income',
+            stops: [
+                [0, '#fee5d9'],
+                [40000, '#fcbba1'],
+                [60000, '#fc9272'],
+                [80000, '#fb6a4a'],
+                [100000, '#de2d26'],
+                [150000, '#a50f15']
+            ]
+        }
+    },
+    // Block groups - visible at very high zoom
+    blockgroups: {
+        file: './data/tiger/mt_blockgroups.geojson',
+        lineColor: '#999999',
+        lineWidth: 0.3,
+        fillColor: 'rgba(153, 153, 153, 0.03)',
+        minzoom: 11,
+        visible: false,
+        dashArray: null
+    }
+};
+
+// Load TIGER/ACS boundary layers
+async function loadTIGERBoundaries() {
+    console.log('Loading TIGER/ACS layers...');
+
+    for (const [layerId, config] of Object.entries(tigerConfig)) {
+        try {
+            const response = await fetch(config.file);
+            const data = await response.json();
+
+            const sourceId = `tiger-${layerId}`;
+
+            // Add source
+            map.addSource(sourceId, {
+                type: 'geojson',
+                data: data
+            });
+
+            // Add fill layer if configured
+            if (config.fillColor || config.choropleth) {
+                const fillPaint = {};
+
+                if (config.choropleth) {
+                    // Choropleth coloring based on ACS data
+                    fillPaint['fill-color'] = [
+                        'interpolate',
+                        ['linear'],
+                        ['get', config.choropleth.property],
+                        ...config.choropleth.stops.flat()
+                    ];
+                    fillPaint['fill-opacity'] = 0.7;
+                } else {
+                    fillPaint['fill-color'] = config.fillColor;
+                    fillPaint['fill-opacity'] = 1;
+                }
+
+                map.addLayer({
+                    id: `${sourceId}-fill`,
+                    type: 'fill',
+                    source: sourceId,
+                    minzoom: config.minzoom || 0,
+                    maxzoom: config.maxzoom || 24,
+                    paint: fillPaint,
+                    layout: {
+                        'visibility': config.visible ? 'visible' : 'none'
+                    }
+                });
+            }
+
+            // Add line layer
+            const linePaint = {
+                'line-color': config.lineColor,
+                'line-width': config.lineWidth,
+                'line-opacity': 0.9
+            };
+
+            // Add dash pattern if specified
+            if (config.dashArray) {
+                linePaint['line-dasharray'] = config.dashArray;
+            }
+
+            map.addLayer({
+                id: `${sourceId}-line`,
+                type: 'line',
+                source: sourceId,
+                minzoom: config.minzoom || 0,
+                maxzoom: config.maxzoom || 24,
+                paint: linePaint,
+                layout: {
+                    'visibility': config.visible ? 'visible' : 'none'
+                }
+            });
+
+            // Add labels for places (cities/towns)
+            if (layerId === 'places') {
+                // First add a background layer for major cities
+                map.addLayer({
+                    id: `${sourceId}-labels-bg`,
+                    type: 'symbol',
+                    source: sourceId,
+                    minzoom: 6,
+                    filter: [
+                        'any',
+                        // Show only major cities (>5 sq km land area) at low zoom
+                        ['all', ['<', ['zoom'], 9], ['>', ['get', 'ALAND'], 5000000]],
+                        // Show all cities at higher zoom
+                        ['>=', ['zoom'], 9]
+                    ],
+                    layout: {
+                        'text-field': ['get', 'NAME'],
+                        'text-size': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            6, 18,   // Even larger
+                            8, 22,
+                            10, 26,
+                            12, 30,
+                            14, 34
+                        ],
+                        'text-anchor': 'center',
+                        'text-allow-overlap': [
+                            'step',
+                            ['zoom'],
+                            true,  // Allow overlap at low zoom for major cities
+                            9, false  // No overlap at high zoom
+                        ],
+                        'text-optional': false,
+                        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                        'text-letter-spacing': 0.05,
+                        'visibility': config.visible ? 'visible' : 'none'
+                    },
+                    paint: {
+                        'text-color': '#FFFF00',  // Bright yellow
+                        'text-halo-color': '#000000',
+                        'text-halo-width': 5,
+                        'text-halo-blur': 0.5,
+                        'text-opacity': 1
+                    }
+                });
+            }
+
+            // Add county name labels
+            if (layerId === 'counties') {
+                map.addLayer({
+                    id: `${sourceId}-labels`,
+                    type: 'symbol',
+                    source: sourceId,
+                    minzoom: 6,
+                    maxzoom: 10,  // Hide at high zoom when cities dominate
+                    layout: {
+                        'text-field': [
+                            'concat',
+                            ['get', 'NAME'],
+                            ' County'
+                        ],
+                        'text-size': [
+                            'interpolate',
+                            ['linear'],
+                            ['zoom'],
+                            6, 12,
+                            8, 14,
+                            10, 16
+                        ],
+                        'text-anchor': 'center',
+                        'text-allow-overlap': false,
+                        'text-optional': true,
+                        'text-font': ['Open Sans Italic', 'Arial Unicode MS Regular'],
+                        'visibility': config.visible ? 'visible' : 'none'
+                    },
+                    paint: {
+                        'text-color': '#6A0DAD',  // Purple to match county lines
+                        'text-halo-color': '#ffffff',
+                        'text-halo-width': 2.5,
+                        'text-halo-blur': 1,
+                        'text-opacity': 0.9
+                    }
+                });
+            }
+
+            // Add click handler for demographics (tracts only)
+            if (layerId === 'tracts') {
+                map.on('click', `${sourceId}-fill`, (e) => {
+                    if (!e.features?.[0]) return;
+
+                    // Highlight the clicked tract
+                    highlightFeature(e.features[0]);
+
+                    const p = e.features[0].properties;
+
+                    const formatNumber = (n) => n ? n.toLocaleString() : 'N/A';
+                    const formatCurrency = (n) => n ? `$${n.toLocaleString()}` : 'N/A';
+
+                    const html = `
+                        <div style="font-family: -apple-system, sans-serif; min-width: 280px;">
+                            <div style="font-weight: 700; font-size: 14px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #444;">
+                                Census Tract ${p.NAME || p.GEOID}
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px;">
+                                <div style="background: #f0f0f0; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #666; font-size: 9px;">Population</div>
+                                    <div style="font-weight: 700; font-size: 13px;">${formatNumber(p.total_population)}</div>
+                                </div>
+                                <div style="background: #f0f0f0; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #666; font-size: 9px;">Median Age</div>
+                                    <div style="font-weight: 700; font-size: 13px;">${p.median_age || 'N/A'}</div>
+                                </div>
+                                <div style="background: #e6f3ff; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #0066cc; font-size: 9px;">Median Income</div>
+                                    <div style="font-weight: 700; font-size: 13px; color: #0066cc;">${formatCurrency(p.median_household_income)}</div>
+                                </div>
+                                <div style="background: #e6f3ff; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #0066cc; font-size: 9px;">Per Capita</div>
+                                    <div style="font-weight: 700; font-size: 13px; color: #0066cc;">${formatCurrency(p.per_capita_income)}</div>
+                                </div>
+                                <div style="background: #fff3e6; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #cc6600; font-size: 9px;">Housing Units</div>
+                                    <div style="font-weight: 700; font-size: 13px;">${formatNumber(p.total_housing_units)}</div>
+                                </div>
+                                <div style="background: #fff3e6; padding: 6px; border-radius: 3px;">
+                                    <div style="color: #cc6600; font-size: 9px;">Median Home Value</div>
+                                    <div style="font-weight: 700; font-size: 13px;">${formatCurrency(p.median_home_value)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    new maplibregl.Popup({ closeButton: true, maxWidth: '320px' })
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                });
+
+                // Hover cursor
+                map.on('mouseenter', `${sourceId}-fill`, () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', `${sourceId}-fill`, () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            }
+
+            // Add click handler for demographics (counties)
+            if (layerId === 'counties') {
+                map.on('click', `${sourceId}-fill`, (e) => {
+                    if (!e.features?.[0]) return;
+
+                    // Highlight the clicked county
+                    highlightFeature(e.features[0]);
+
+                    const p = e.features[0].properties;
+
+                    const formatNumber = (n) => n ? parseFloat(n).toLocaleString() : 'N/A';
+                    const formatCurrency = (n) => n ? `$${parseFloat(n).toLocaleString()}` : 'N/A';
+                    const formatPercent = (n) => n ? `${parseFloat(n).toFixed(1)}%` : 'N/A';
+
+                    const html = `
+                        <div style="font-family: -apple-system, sans-serif; min-width: 300px;">
+                            <div style="font-weight: 700; font-size: 16px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #6A0DAD; color: #6A0DAD;">
+                                ${p.NAME || p.NAMELSAD} County
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 11px;">
+                                <div style="background: #f0f0f0; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #666; font-size: 9px; text-transform: uppercase;">Population</div>
+                                    <div style="font-weight: 700; font-size: 15px; margin-top: 2px;">${formatNumber(p.total_population)}</div>
+                                </div>
+                                <div style="background: #f0f0f0; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #666; font-size: 9px; text-transform: uppercase;">Median Age</div>
+                                    <div style="font-weight: 700; font-size: 15px; margin-top: 2px;">${p.median_age ? parseFloat(p.median_age).toFixed(1) : 'N/A'}</div>
+                                </div>
+                                <div style="background: #e6f3ff; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #0066cc; font-size: 9px; text-transform: uppercase;">Median Income</div>
+                                    <div style="font-weight: 700; font-size: 15px; color: #0066cc; margin-top: 2px;">${formatCurrency(p.median_household_income)}</div>
+                                </div>
+                                <div style="background: #e6f3ff; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #0066cc; font-size: 9px; text-transform: uppercase;">Per Capita</div>
+                                    <div style="font-weight: 700; font-size: 15px; color: #0066cc; margin-top: 2px;">${formatCurrency(p.per_capita_income)}</div>
+                                </div>
+                                <div style="background: #fff3e6; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #cc6600; font-size: 9px; text-transform: uppercase;">Housing Units</div>
+                                    <div style="font-weight: 700; font-size: 15px; margin-top: 2px;">${formatNumber(p.total_housing_units)}</div>
+                                </div>
+                                <div style="background: #fff3e6; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #cc6600; font-size: 9px; text-transform: uppercase;">Median Home Value</div>
+                                    <div style="font-weight: 700; font-size: 15px; margin-top: 2px;">${formatCurrency(p.median_home_value)}</div>
+                                </div>
+                                <div style="background: #ffe6f0; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #cc0066; font-size: 9px; text-transform: uppercase;">Poverty Rate</div>
+                                    <div style="font-weight: 700; font-size: 15px; color: #cc0066; margin-top: 2px;">${formatPercent(p.poverty_rate)}</div>
+                                </div>
+                                <div style="background: #ffe6f0; padding: 8px; border-radius: 4px;">
+                                    <div style="color: #cc0066; font-size: 9px; text-transform: uppercase;">Unemployment</div>
+                                    <div style="font-weight: 700; font-size: 15px; color: #cc0066; margin-top: 2px;">${formatPercent(p.unemployment_rate)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    new maplibregl.Popup({ closeButton: true, maxWidth: '340px' })
+                        .setLngLat(e.lngLat)
+                        .setHTML(html)
+                        .addTo(map);
+                });
+
+                // Hover cursor
+                map.on('mouseenter', `${sourceId}-fill`, () => {
+                    map.getCanvas().style.cursor = 'pointer';
+                });
+                map.on('mouseleave', `${sourceId}-fill`, () => {
+                    map.getCanvas().style.cursor = '';
+                });
+            }
+
+            console.log(`TIGER ${layerId}: ${data.features.length} features loaded`);
+        } catch (error) {
+            console.error(`Failed to load TIGER ${layerId}:`, error);
+        }
+    }
+
+    console.log('TIGER/ACS layers loaded');
+}
+
+
+
 // Load parcels, waterways, and oil wells when map is ready
-map.on('load', () => {
-    console.log('Map loaded - Esri World Imagery + Street Labels + Waterways + Water Rights + Oil Wells + AIS Vessels');
+map.on('load', async () => {
+    console.log('Map loaded - Esri World Imagery + Street Labels + Waterways + Water Rights + Oil Wells + AIS Vessels + TIGER Boundaries');
+
+    // Load TIGER boundaries first (they go underneath)
+    await loadTIGERBoundaries();
+
+    // Then load parcels, waterways, etc on top
     loadParcelsInView();
     loadWaterways();
     loadOilWells();
@@ -1137,7 +1604,7 @@ map.on('load', () => {
 
 // Reload parcels when user finishes moving the map
 map.on('moveend', () => {
-    if (map.getZoom() >= 13) {
+    if (map.getZoom() >= 15) {
         loadParcelsInView();
     }
 });
@@ -1146,7 +1613,7 @@ map.on('moveend', () => {
 map.on('zoom', () => {
     const zoom = map.getZoom();
     const loadingEl = document.getElementById('loading');
-    if (zoom < 13) {
+    if (zoom < 15) {
         loadingEl.textContent = 'Zoom in to see property lines';
         loadingEl.style.display = 'block';
     } else if (loadingEl.textContent !== 'Loading Montana parcels...') {
@@ -1156,6 +1623,19 @@ map.on('zoom', () => {
 
 map.on('error', (e) => {
     console.error('Map error:', e);
+});
+
+// Clear highlight when clicking on empty space
+map.on('click', (e) => {
+    // Check if click is on any interactive layer
+    const features = map.queryRenderedFeatures(e.point, {
+        layers: ['parcels-line', 'parcels-fill', 'tiger-tracts-fill', 'tiger-counties-fill']
+    });
+
+    // If no features were clicked, clear highlight
+    if (features.length === 0) {
+        clearHighlight();
+    }
 });
 
 </script>

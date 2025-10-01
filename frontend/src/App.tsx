@@ -27,11 +27,11 @@ export const App: React.FC = () => {
           // Load real parcel data from backend
           'parcels': {
             type: 'geojson',
-            data: 'http://localhost:8001/data/parcels.geojson'
+            data: 'http://localhost:8000/data/parcels.geojson'
           },
           'ownership': {
             type: 'geojson',
-            data: 'http://localhost:8001/data/ownership.geojson'
+            data: 'http://localhost:8000/data/ownership.geojson'
           }
         },
         layers: [
