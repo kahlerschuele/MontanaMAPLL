@@ -72,24 +72,11 @@
             line-height: 1.6;
         }
 
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 20px 30px;
-            border-radius: 8px;
-            z-index: 1000;
-            font-size: 14px;
-        }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
-<div id="loading" class="loading">Loading Montana parcels...</div>
 
 <div class="legend">
     <h4>Montana Map Layers</h4>
@@ -128,23 +115,23 @@
         <h4 style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600;">Census Boundaries</h4>
         <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
             <input type="checkbox" onchange="toggleTIGERLayer('counties')" checked style="margin-right: 6px;">
-            <div style="width: 16px; height: 3px; background: #FF00FF; margin-right: 6px;"></div>
-            <span>Counties (56) <span style="color: #999; font-size: 10px;">Always visible</span></span>
+            <div style="width: 16px; height: 3px; background: #AAAAAA; margin-right: 6px;"></div>
+            <span>Counties (56) <span style="color: #999; font-size: 10px;">z5+</span></span>
         </label>
         <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
-            <input type="checkbox" onchange="toggleTIGERLayer('tracts')" style="margin-right: 6px;">
-            <div style="width: 16px; height: 2px; background: #FF6B6B; margin-right: 6px;"></div>
-            <span>Census Tracts (319) <span style="color: #999; font-size: 10px;">z10-15</span></span>
+            <input type="checkbox" onchange="toggleTIGERLayer('tracts')" checked style="margin-right: 6px;">
+            <div style="width: 16px; height: 2px; background: #87CEEB; margin-right: 6px;"></div>
+            <span>Census Tracts (319) <span style="color: #999; font-size: 10px;">z8-14</span></span>
         </label>
         <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
             <input type="checkbox" onchange="toggleTIGERLayer('blockgroups')" style="margin-right: 6px;">
-            <div style="width: 16px; height: 2px; background: #4ECDC4; margin-right: 6px;"></div>
-            <span>Block Groups (900) <span style="color: #999; font-size: 10px;">z13-18</span></span>
+            <div style="width: 16px; height: 2px; background: #999999; margin-right: 6px;"></div>
+            <span>Block Groups (900) <span style="color: #999; font-size: 10px;">z11+</span></span>
         </label>
         <label style="display: flex; align-items: center; margin: 6px 0; font-size: 11px; cursor: pointer;">
             <input type="checkbox" onchange="toggleTIGERLayer('places')" style="margin-right: 6px;">
-            <div style="width: 16px; height: 2px; background: #F7DC6F; margin-right: 6px;"></div>
-            <span>Places (497) <span style="color: #999; font-size: 10px;">z8-16</span></span>
+            <div style="width: 16px; height: 2px; background: #999999; border: 1px dashed #666; margin-right: 6px;"></div>
+            <span>Places (497) <span style="color: #999; font-size: 10px;">z6+</span></span>
         </label>
     </div>
 </div>
@@ -211,17 +198,10 @@ let parcelData = { type: 'FeatureCollection', features: [] };
 
 // Highlighted feature tracking
 let highlightedFeature = null;
+let currentPopup = null;
 
 // Function to highlight a clicked feature
 function highlightFeature(feature) {
-    // Clear previous highlight
-    if (map.getSource('highlight')) {
-        map.getSource('highlight').setData({
-            type: 'FeatureCollection',
-            features: []
-        });
-    }
-
     // Store the highlighted feature
     highlightedFeature = feature;
 
@@ -246,6 +226,7 @@ function highlightFeature(feature) {
             }
         });
     } else {
+        // Always update with new feature
         map.getSource('highlight').setData({
             type: 'FeatureCollection',
             features: [feature]
@@ -262,6 +243,46 @@ function clearHighlight() {
         });
     }
     highlightedFeature = null;
+}
+
+// Function to toggle TIGER layer visibility
+function toggleTIGERLayer(layerId) {
+    const sourceId = `tiger-${layerId}`;
+    const fillLayerId = `${sourceId}-fill`;
+    const lineLayerId = `${sourceId}-line`;
+
+    console.log(`Toggling layer: ${layerId}`);
+
+    // Check current visibility
+    const currentVisibility = map.getLayoutProperty(lineLayerId, 'visibility');
+    const newVisibility = currentVisibility === 'visible' ? 'none' : 'visible';
+
+    console.log(`  Line layer ${lineLayerId}: ${currentVisibility} → ${newVisibility}`);
+
+    // Toggle line layer
+    if (map.getLayer(lineLayerId)) {
+        map.setLayoutProperty(lineLayerId, 'visibility', newVisibility);
+    } else {
+        console.warn(`  Line layer ${lineLayerId} not found`);
+    }
+
+    // Toggle fill layer if it exists
+    if (map.getLayer(fillLayerId)) {
+        map.setLayoutProperty(fillLayerId, 'visibility', newVisibility);
+        console.log(`  Fill layer ${fillLayerId}: toggled`);
+    }
+
+    // Toggle labels if they exist (for places)
+    const labelLayerId = `${sourceId}-labels`;
+    const labelBgLayerId = `${sourceId}-labels-bg`;
+    if (map.getLayer(labelLayerId)) {
+        map.setLayoutProperty(labelLayerId, 'visibility', newVisibility);
+        console.log(`  Label layer ${labelLayerId}: toggled`);
+    }
+    if (map.getLayer(labelBgLayerId)) {
+        map.setLayoutProperty(labelBgLayerId, 'visibility', newVisibility);
+        console.log(`  Label bg layer ${labelBgLayerId}: toggled`);
+    }
 }
 
 // Function to query water rights for a parcel
@@ -547,10 +568,21 @@ async function showParcelPopup(lngLat, p, geometry) {
         </div>
     `;
 
-    new maplibregl.Popup({ maxWidth: '420px' })
+    // Close existing popup if any
+    if (currentPopup) {
+        currentPopup.remove();
+    }
+
+    currentPopup = new maplibregl.Popup({ maxWidth: '420px' })
         .setLngLat(lngLat)
         .setHTML(html)
         .addTo(map);
+
+    // Clear highlight when popup is closed
+    currentPopup.on('close', () => {
+        clearHighlight();
+        currentPopup = null;
+    });
 
     // Fetch production data for each well on this property
     if (oilWells.length > 0) {
@@ -560,7 +592,7 @@ async function showParcelPopup(lngLat, p, geometry) {
 
             if (apiNumber && apiNumber !== 0) {
                 try {
-                    const response = await fetch(`http://localhost:8001/api/well-production/${apiNumber}`);
+                    const response = await fetch(`http://localhost:8000/api/well-production/${apiNumber}`);
                     if (response.ok) {
                         const prodData = await response.json();
                         const prodElement = document.getElementById(`well-prod-${apiNumber}`);
@@ -697,18 +729,24 @@ async function loadParcelsInView() {
                     }
                 });
 
-                // Double-click handler with detailed property info
-                map.on('dblclick', 'parcels-line', (e) => {
-                    e.preventDefault(); // Prevent zoom
+                // Click handler for parcel lines
+                map.on('click', 'parcels-line', (e) => {
                     if (!e.features || !e.features[0]) return;
+
+                    // Stop event from bubbling to county/tract layers below
+                    e.originalEvent.stopPropagation();
+
                     highlightFeature(e.features[0]);
                     showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
                 });
 
-                // Double-click handler for parcel fill (anywhere on property)
-                map.on('dblclick', 'parcels-fill', (e) => {
-                    e.preventDefault();
+                // Click handler for parcel fill (anywhere on property)
+                map.on('click', 'parcels-fill', (e) => {
                     if (!e.features || !e.features[0]) return;
+
+                    // Stop event from bubbling to county/tract layers below
+                    e.originalEvent.stopPropagation();
+
                     highlightFeature(e.features[0]);
                     showParcelPopup(e.lngLat, e.features[0].properties, e.features[0].geometry);
                 });
@@ -727,8 +765,6 @@ async function loadParcelsInView() {
                     map.getCanvas().style.cursor = '';
                 });
             }
-
-            document.getElementById('loading').style.display = 'none';
         }
     } catch (error) {
         console.error('Error loading parcels:', error);
@@ -991,7 +1027,7 @@ async function loadOilWells() {
                     let productionHtml = '';
                     if (p.API_WellNo && p.API_WellNo !== 0) {
                         try {
-                            const response = await fetch(`http://localhost:8001/api/well-production/${p.API_WellNo}`);
+                            const response = await fetch(`http://localhost:8000/api/well-production/${p.API_WellNo}`);
                             if (response.ok) {
                                 const prodData = await response.json();
                                 productionHtml = `
@@ -1093,7 +1129,7 @@ const vesselData = new Map(); // Store vessel positions
 
 function connectAISStream() {
     try {
-        aisWebSocket = new WebSocket('ws://localhost:8001/ws/ais');
+        aisWebSocket = new WebSocket('ws://localhost:8000/ws/ais');
 
         aisWebSocket.onopen = () => {
             console.log('Connected to AIS stream');
@@ -1245,12 +1281,12 @@ const tigerConfig = {
     // Places (cities/towns) - visible at medium zoom
     places: {
         file: './data/tiger/mt_places.geojson',
-        lineColor: '#F7DC6F',
-        lineWidth: 1,
-        fillColor: 'rgba(247, 220, 111, 0.15)',
+        lineColor: '#999999',  // Gray instead of gold
+        lineWidth: 0.8,
+        fillColor: 'rgba(153, 153, 153, 0.05)',
         minzoom: 6,  // Show earlier for better visibility
-        visible: true,  // Turn on by default
-        dashArray: null
+        visible: false,  // Turn off by default
+        dashArray: [2, 2]  // Subtle dashed line
     },
     // Census tracts with ACS demographics - subtle dotted blue lines
     tracts: {
@@ -1314,7 +1350,7 @@ async function loadTIGERBoundaries() {
                         ['get', config.choropleth.property],
                         ...config.choropleth.stops.flat()
                     ];
-                    fillPaint['fill-opacity'] = 0.7;
+                    fillPaint['fill-opacity'] = 0.15;
                 } else {
                     fillPaint['fill-color'] = config.fillColor;
                     fillPaint['fill-opacity'] = 1;
@@ -1449,6 +1485,15 @@ async function loadTIGERBoundaries() {
                 map.on('click', `${sourceId}-fill`, (e) => {
                     if (!e.features?.[0]) return;
 
+                    // Only allow tract clicks at medium zoom (8-13) - not when viewing parcels
+                    const zoom = map.getZoom();
+                    if (zoom < 8 || zoom >= 14) {
+                        return; // Don't handle click if zoomed too far in or out
+                    }
+
+                    // Stop event from bubbling to prevent other layer clicks
+                    e.originalEvent.stopPropagation();
+
                     // Highlight the clicked tract
                     highlightFeature(e.features[0]);
 
@@ -1491,10 +1536,21 @@ async function loadTIGERBoundaries() {
                         </div>
                     `;
 
-                    new maplibregl.Popup({ closeButton: true, maxWidth: '320px' })
+                    // Close existing popup if any
+                    if (currentPopup) {
+                        currentPopup.remove();
+                    }
+
+                    currentPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' })
                         .setLngLat(e.lngLat)
                         .setHTML(html)
                         .addTo(map);
+
+                    // Clear highlight when popup is closed
+                    currentPopup.on('close', () => {
+                        clearHighlight();
+                        currentPopup = null;
+                    });
                 });
 
                 // Hover cursor
@@ -1510,6 +1566,15 @@ async function loadTIGERBoundaries() {
             if (layerId === 'counties') {
                 map.on('click', `${sourceId}-fill`, (e) => {
                     if (!e.features?.[0]) return;
+
+                    // Only allow county clicks when zoomed way out (viewing multiple counties)
+                    const zoom = map.getZoom();
+                    if (zoom >= 9) {
+                        return; // Don't handle click if zoomed in too close
+                    }
+
+                    // Stop event from bubbling to prevent other layer clicks
+                    e.originalEvent.stopPropagation();
 
                     // Highlight the clicked county
                     highlightFeature(e.features[0]);
@@ -1562,10 +1627,21 @@ async function loadTIGERBoundaries() {
                         </div>
                     `;
 
-                    new maplibregl.Popup({ closeButton: true, maxWidth: '340px' })
+                    // Close existing popup if any
+                    if (currentPopup) {
+                        currentPopup.remove();
+                    }
+
+                    currentPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' })
                         .setLngLat(e.lngLat)
                         .setHTML(html)
                         .addTo(map);
+
+                    // Clear highlight when popup is closed
+                    currentPopup.on('close', () => {
+                        clearHighlight();
+                        currentPopup = null;
+                    });
                 });
 
                 // Hover cursor
@@ -1609,17 +1685,6 @@ map.on('moveend', () => {
     }
 });
 
-// Show message when zoomed out
-map.on('zoom', () => {
-    const zoom = map.getZoom();
-    const loadingEl = document.getElementById('loading');
-    if (zoom < 15) {
-        loadingEl.textContent = 'Zoom in to see property lines';
-        loadingEl.style.display = 'block';
-    } else if (loadingEl.textContent !== 'Loading Montana parcels...') {
-        loadingEl.style.display = 'none';
-    }
-});
 
 map.on('error', (e) => {
     console.error('Map error:', e);
