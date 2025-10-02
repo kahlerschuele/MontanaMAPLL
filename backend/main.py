@@ -40,14 +40,21 @@ async def startup_event():
 async def root():
     """Root endpoint."""
     return {
-        "name": "US Ownership Tile Server",
-        "version": "1.0.1",
+        "name": "Montana Property & Energy Map API",
+        "version": "1.1.0",
         "endpoints": {
             "health": "/health",
             "tiles": "/tiles/ownership/{z}/{x}/{y}.pbf",
             "ownership_data": "/data/ownership.geojson",
             "parcels_data": "/data/parcels.geojson",
-            "well_production": "/api/well-production/{api_number}"
+            "well_production": "/api/well-production/{api_number}",
+            "eia_montana": "/api/eia/montana-data",
+            "ais_websocket": "/ws/ais",
+            "tiger_counties": "/data/tiger/counties.geojson",
+            "tiger_tracts": "/data/tiger/tracts.geojson",
+            "tiger_blockgroups": "/data/tiger/blockgroups.geojson",
+            "tiger_places": "/data/tiger/places.geojson",
+            "tiger_zipcodes": "/data/tiger/zipcodes.geojson"
         }
     }
 
@@ -166,6 +173,66 @@ async def get_montana_eia_data():
             formatted_data[category] = []
 
     return formatted_data
+
+
+@app.get("/data/tiger/montana_state.geojson")
+async def get_montana_state():
+    """Serve Montana state boundary from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "montana_state.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"State boundary not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/data/tiger/counties.geojson")
+async def get_tiger_counties():
+    """Serve Montana counties from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "counties.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"Counties data not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/data/tiger/tracts.geojson")
+async def get_tiger_tracts():
+    """Serve Montana census tracts from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "tracts.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"Tracts data not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/data/tiger/blockgroups.geojson")
+async def get_tiger_blockgroups():
+    """Serve Montana census block groups from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "blockgroups.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"Block groups data not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/data/tiger/places.geojson")
+async def get_tiger_places():
+    """Serve Montana incorporated places from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "places.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"Places data not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
+
+
+@app.get("/data/tiger/zipcodes.geojson")
+async def get_tiger_zipcodes():
+    """Serve Montana ZIP Code Tabulation Areas from TIGER/Line"""
+    tiger_path = Path(__file__).parent.parent / "data" / "tiger" / "zipcodes.geojson"
+    if not tiger_path.exists():
+        raise HTTPException(status_code=404, detail=f"ZIP codes data not found at {tiger_path}")
+    with open(tiger_path, 'r') as f:
+        return json.load(f)
 
 
 @app.websocket("/ws/ais")

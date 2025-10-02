@@ -32,7 +32,16 @@
       "Bash(findstr:*)",
       "WebFetch(domain:mtdnrc.hub.arcgis.com)",
       "WebFetch(domain:opendata-mtdnrc.hub.arcgis.com)",
-      "WebFetch(domain:svc.mt.gov)"
+      "WebFetch(domain:svc.mt.gov)",
+      "Bash(npm install)",
+      "Read(//c/Users/tjohn/OneDrive/Pictures/Screenshots/**)",
+      "Bash(tasklist)",
+      "Bash(where ogr2ogr)",
+      "Bash(cmd.exe:*)",
+      "Bash(if [ -f \"nul\" ])",
+      "Bash(then rm nul)",
+      "Bash(else echo \"No nul file found\")",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []

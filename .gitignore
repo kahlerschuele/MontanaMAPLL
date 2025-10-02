@@ -1,11 +1,3 @@
-# Data files
-data/padus/*.zip
-data/padus/*.gdb/
-data/padus/*.gpkg
-data/padus/*.geojson
-data/padus/*.ndjson
-data/tiles/*.mbtiles
-
 # Python
 __pycache__/
 *.py[cod]
@@ -14,19 +6,50 @@ __pycache__/
 .Python
 env/
 venv/
-.venv/
-*.egg-info/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
 
 # Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
 dist/
-.DS_Store
-
-# Environment
-.env
+build/
 
 # IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data files (large)
+data/padus/*.gpkg
+data/padus/*.zip
+data/padus/*.ndjson
+data/tiles/*.mbtiles
+data/tiger/*.zip
+data/tiger/*_temp/
+
+# Keep structure files
+!data/.gitkeep
+!data/tiger/.gitkeep
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
